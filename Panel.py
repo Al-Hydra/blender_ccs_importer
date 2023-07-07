@@ -4,7 +4,6 @@ from bpy.props import StringProperty, BoolProperty, EnumProperty, PointerPropert
 from .ccs_lib import ccs_reader
 from .ccs_lib.ccsf import ccs
 from mathutils import Vector, Matrix, Euler, Quaternion
-from .utils.pillow_installer import install_pillow
 from time import perf_counter
 import json
 
@@ -22,7 +21,6 @@ class CCS_IMPORTER_PT_PANEL(bpy.types.Panel):
         layout.label(text="CCS Importer")
         layout.prop(scene.ccs_importer, "filepath")
         layout.operator("import_scene.ccs")
-        layout.operator("object.install_pillow")
 
 class CCS_PropertyGroup(bpy.types.PropertyGroup):
     filepath: bpy.props.StringProperty(
