@@ -33,8 +33,6 @@ class ccsObject(BrStruct):
         self.parent = chunks[self.parentIndex]
         self.model = chunks[self.modelIndex]
         self.shadow = chunks[self.shadowIndex]
-        if self.extraIndex:
-            self.extra = chunks[self.extraIndex]
 
 
 class ccsExternalObject(BrStruct):

@@ -17,8 +17,6 @@ class ccsClump(BrStruct):
         self.boneCount = br.read_uint32()
         self.boneIndices = [br.read_uint32()
                               for i in range(self.boneCount)]
-        '''self.boneNames = [indexTable.Names[br.read_uint32()][0]
-                             for i in range(self.boneCount)]'''
         
         if version > 0x110:
             self.bones = {i: br.read_struct(Bone) for i in self.boneIndices}
