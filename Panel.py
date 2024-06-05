@@ -1,9 +1,9 @@
 import bpy, bmesh, math, mathutils
 from bpy.types import PropertyGroup, Operator, Panel
 from bpy.props import StringProperty, BoolProperty, EnumProperty, PointerProperty, CollectionProperty
-from .ccs_lib import ccs_reader
-from .ccs_lib.ccsf import ccs
+from .ccs_lib.ccs import *
 from mathutils import Vector, Matrix, Euler, Quaternion
+from math import radians
 from time import perf_counter
 import json
 
@@ -41,26 +41,26 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
         filepath = scene.ccs_importer.filepath
 
         start = perf_counter()
-        ccsf = ccs_reader.read_ccs(filepath)
+        ccsf:ccsFile = readCCS(filepath)
         
         
 
         def make_material(model, mesh):
-            mat = bpy.data.materials.get(f'{model.name}_{mesh.Material.name}')
+            mat = bpy.data.materials.get(f'{model.name}_{mesh.material.name}')
             if not mat:
-                mat = bpy.data.materials.new(mesh.Material.name)
+                mat = bpy.data.materials.new(f'{model.name}_{mesh.material.name}')
                 mat.use_nodes = True
                 #add image texture
-                tex = mesh.Material.Texture
+                tex = mesh.material.texture
+                image = tex.convertToTGA()
                 if tex:
                     img = None
 
                     if hasattr(tex, "name"):
                         img = bpy.data.images.get(tex.name)    
                     if not img:
-                        img = bpy.data.images.new(tex.name, tex.Width, tex.Height, alpha=True)
-                        if hasattr(tex, "Image"):
-                            img.pack(data=bytes(tex.Image), data_len=len(tex.Image))
+                        img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                        img.pack(data=bytes(image), data_len=len(image))
                         img.source = 'FILE'
                     
                     #add texture node
@@ -77,11 +77,149 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                     mat.shadow_method = 'NONE'
                     mat.show_transparent_back = False
             return mat
-                    
-        collection = bpy.data.collections.new(ccsf.filename)
-        bpy.context.collection.children.link(collection)
-        for cmp in ccsf.ChunksDict.get:
-            if cmp.type == 'Clump':
+
+        def makeMeshSingleWeight(meshdata):
+            bm = bmesh.new()
+
+            uv_layer = bm.loops.layers.uv.new(f"UV")
+            color_layer = bm.loops.layers.color.new(f"Color")
+
+            normals = []
+
+            #Triangles
+            direction = 1
+            for i, v in enumerate(mesh.vertices):
+                bmVertex = bm.verts.new(v.position)
+                normals.append(Vector(v.normal))
+                bm.verts.ensure_lookup_table()
+                bm.verts.index_update()
+
+                flag = v.triangleFlag
+                
+                if flag == 1:
+                    direction = 1
+                elif flag == 2:
+                    direction = -1
+                
+                if flag == 0:
+                    if direction == 1:
+                        face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
+                    elif direction == -1:
+                        face = bm.faces.new((bm.verts[i-1], bm.verts[i-2], bm.verts[i]))
+                    face.smooth = True
+                    for loop in face.loops:
+                        loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
+                        loop[color_layer] = mesh.vertices[loop.vert.index].color
+                    #we need to flip the direction for the next face
+                    direction *= -1
+            
+            bm.faces.ensure_lookup_table()
+
+            bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.0001)
+            bm.to_mesh(meshdata)
+
+
+            #meshdata.normals_split_custom_set_from_vertices(normals)
+            #clean up the mesh
+            
+            #make sure that all the normals are pointing the right way
+            #bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+            return meshdata
+        
+            '''bm = bmesh.new()
+            verts = [bm.verts.new(v.position) for v in mesh.vertices]
+            bm.verts.ensure_lookup_table()
+            bm.verts.index_update()
+            for i, t in enumerate(mesh.triangles):
+                bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]]))
+            bm.faces.ensure_lookup_table()
+            bm.to_mesh(meshdata)
+            return meshdata'''
+
+        def makeMeshMultiWeight(meshdata, model, bone_indices):        
+            bm = bmesh.new()
+            vgroup_layer = bm.verts.layers.deform.new("Weights")
+            uv_layer = bm.loops.layers.uv.new(f"UV")
+            #color_layer = bm.loops.layers.color.new(f"Color")
+
+            normals = []
+            
+
+            for i, ccsVertex in enumerate(mesh.vertices):
+                #calculate vertex final position
+                boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
+                boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
+
+                vertex_matrix1 = model.clump.bones[boneID1].matrix
+                vertex_matrix2 = model.clump.bones[boneID2].matrix
+                vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
+
+                if ccsVertex.boneIDs[1] != "":
+                    '''if mesh.Vertices[i].Weights[1] == 0:
+                        print(f"weight is 0, bone is {mesh.Vertices[i].Bones[1]}")
+                        print(f"first bone is {mesh.Vertices[i].Bones[0]}, weight is {mesh.Vertices[i].Weights[0]}")'''
+                    vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
+                else:
+                    vp2 = Vector((0,0,0))
+                
+
+                bmVertex = bm.verts.new(vp1 + vp2)
+                normals.append(Vector(ccsVertex.normals[0]))
+                
+                bm.verts.ensure_lookup_table()
+                #add vertex weights
+                boneID1 = bone_indices[model.lookupNames[ccsVertex.boneIDs[0]]]
+                boneID2 = bone_indices[model.lookupNames[ccsVertex.boneIDs[1]]]
+
+                bm.verts.ensure_lookup_table()
+                bm.verts.index_update()
+
+                if ccsVertex.weights[0] == 1:
+                   bmVertex[vgroup_layer][boneID1] = 1
+                else:
+                    bmVertex[vgroup_layer][boneID1] = ccsVertex.weights[0]
+                    bmVertex[vgroup_layer][boneID2] = ccsVertex.weights[1]
+
+                '''if model.lookupNames[ccsVertex.boneIDs[0]].endswith("spine1"):
+                    print(f"vertex {bmVertex.index} has weight {bmVertex[vgroup_layer][boneID1]}")
+                    print(f"expected weight is {ccsVertex.weights[0]}")
+                    print(f"boneID1 is {model.lookupNames[ccsVertex.boneIDs[0]]}")
+                    print(f"boneID2 is {model.lookupNames[ccsVertex.boneIDs[1]]}")'''
+
+                flag = ccsVertex.triangleFlag
+                
+                if flag == 1:
+                    direction = 1
+                elif flag == 2:
+                    direction = -1
+                
+                if flag == 0:
+                    if direction == 1:
+                        face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
+                    elif direction == -1:
+                        face = bm.faces.new((bm.verts[i-1], bm.verts[i-2], bm.verts[i]))
+                    face.smooth = True
+                    for loop in face.loops:
+                        loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
+                        #loop[color_layer] = mesh.vertices[loop.vert.index].color
+                    #we need to flip the direction for the next face
+                    direction *= -1
+            
+            #clean up the mesh
+            bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.00001)
+            #make sure that all the normals are pointing the right way
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+            bm.to_mesh(meshdata)
+            #meshdata.normals_split_custom_set_from_vertices(normals)
+
+            return meshdata
+
+        collection = bpy.data.collections.new(ccsf.name)
+        bpy.context.collection.children.link(collection)    
+        for cmp in ccsf.chunks.values():
+            if cmp != None and cmp.type == 'Clump':
                 armname = cmp.name
 
                 clump = bpy.data.armatures.new(armname)
@@ -99,297 +237,122 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
 
                     bone.use_deform = True
                     bone.tail = Vector((0, 0.01, 0))
+                    
+                    rotation = (radians(b.rot[0]), radians(b.rot[1]), radians(b.rot[2]))
 
                     if b.parent:
-                        b.matrix = b.parent.matrix @ Matrix.LocRotScale(b.position, Euler(b.rotation, 'ZYX'), b.scale)
+                        b.matrix = b.parent.matrix @ Matrix.LocRotScale(Vector(b.pos) * 0.01, Euler(rotation, 'ZYX'), b.scale)
                     else:
-                        b.matrix = Matrix.LocRotScale(b.position, Euler(b.rotation, 'ZYX'), b.scale)
+                        b.matrix = Matrix.LocRotScale(Vector(b.pos) * 0.01, Euler(rotation, 'ZYX'), b.scale)
                     
                     bone.matrix = b.matrix
                     bone.parent = bpy.data.armatures[armname].edit_bones[b.parent.name] if b.parent else None
                 
                 bpy.ops.object.editmode_toggle()
-                    
 
-        for model in ccsf.ChunksDict.values():
-            if model.type == 'Model':
 
-                if model.MeshCount > 0 and model.ModelType in ("Rigid1", "Rigid2"):
-                    empty =bpy.data.objects.new(f'{model.name}', None)
-                    empty.empty_display_type = 'PLAIN_AXES'
-                    empty.empty_display_size = 0.001
 
-                    parent_clump = bpy.data.objects.get(model.clump.name)
-                    parent_bone = model.clump.bones.get(model.ParentBone.name)
-                    empty.parent = parent_clump
-                    '''empty.parent_type = 'BONE'
-                    empty.parent_bone = parent_bone.name'''
-                    
-
-                    for m, mesh in enumerate(model.meshes):
-
-                        meshdata = bpy.data.meshes.new(f'{model.name}_{m}')
-                        obj = bpy.data.objects.new(f'{model.name}_{m}', bpy.data.meshes[f'{model.name}_{m}'])
-                        #parent_bone = parent_clump.pose.bones[mesh.Parent]
-
-                        bone_indices = {}
-                        for i in range(len(parent_clump.pose.bones)):
-                            obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                            bone_indices[parent_clump.pose.bones[i].name] = i
-
+        for model in ccsf.chunks.values():
+            if model != None and model.type == 'Model':
+                if model.meshCount > 0 and model.modelType & 8:
+                    continue
+                    '''for i, mesh in enumerate(model.meshes):                        
                         bm = bmesh.new()
-                        custom_normals = list()
 
-                        for i in range(mesh.VertexCount):
-                            
-                            vert = bm.verts.new(Vector(mesh.Vertices[i].Position))
-                        
-                        bm.verts.ensure_lookup_table()
-                        bm.verts.index_update()
-
-                        uv_layer = bm.loops.layers.uv.new(f"UV")
-
-                        for tris in mesh.Triangles:
-                            face = bm.faces.new((bm.verts[tris[0]], bm.verts[tris[1]], bm.verts[tris[2]]))     
-                            face.smooth = True
-                            for loop in face.loops:
-                                
-                                loop[uv_layer].uv = mesh.Vertices[loop.vert.index].UV
-                        
-                        bm.faces.ensure_lookup_table()
-
-                                
-                        #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.00001)
-                        #bm.normal_update()                        
-                        
-                        meshdata.auto_smooth_angle = 180
-                        meshdata.use_auto_smooth = True
-                        
-                        
-                        bm.to_mesh(meshdata)
-                        meshdata.create_normals_split()
-                        meshdata.transform(parent_bone.matrix)
-
-                        obj.vertex_groups[parent_bone.name].add(range(len(mesh.Vertices)), 1, 'ADD')
-                        obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                        obj.modifiers['Armature'].object = parent_clump
-
-                        collection.objects.link(bpy.data.objects[f'{model.name}_{m}'])
-                        
-                        obj.parent = empty
-                        #materal
-                        mat = make_material(model, mesh)
-                        
-                        obj.data.materials.append(mat)
-                    collection.objects.link(empty)
-
-                elif model.MeshCount > 0 and model.ModelType == 'ShadowMesh':
-                    pass
-                    '''for i, mesh in enumerate(model.meshes):
-                        empty =bpy.data.objects.new(f'{model.name}', None)
-                        empty.empty_display_type = 'PLAIN_AXES'
-                        empty.empty_display_size = 0.001
-                        
-                        bm = bmesh.new()
-                        for i in range(len(mesh.Vertices)):
-                            vert = bm.verts.new(mesh.Vertices[i].Position)   
-                        
+                        verts = [bm.verts.new(v.position) for v in mesh.vertices]
                         bm.verts.ensure_lookup_table()
                         
-                        for t in mesh.Triangles:
-                            bm.faces.new((bm.verts[t[0]], bm.verts[t[1]], bm.verts[t[2]]))
-                        bm.faces.ensure_lookup_table()
+                        triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
+                        bm.faces.ensure_lookup_table()                        
 
-                        bpy.data.meshes.new(f'{model.name}_{i}')
+                        blender_mesh = bpy.data.meshes.new(f'{model.name}')
+                        bm.to_mesh(blender_mesh)
 
-                        bm.to_mesh(bpy.data.meshes[f'{model.name}_{i}'])
-
-                        obj = bpy.data.objects.new(f'{model.name}_{i}', bpy.data.meshes[f'{model.name}_{i}'])
-                        #obj.scale = (5.1,5.1,5.1)
-
-                        collection.objects.link(bpy.data.objects[f'{model.name}_{i}'])
-                        
-                        obj.parent = empty
-                        
-                        collection.objects.link(empty)'''
-                #third
-                elif model.MeshCount > 0 and model.ModelType == 'Deformable':
-                    
-                    #print(model.name)
-                    empty =bpy.data.objects.new(f'{model.name}', None)
-                    empty.empty_display_type = 'PLAIN_AXES'
-                    empty.empty_display_size = 0.001
-
-                    #get the parent clump
-                    parent_clump = collection.objects[model.clump.name]
-
-                    #parent the model to the clump
-                    empty.parent = parent_clump
-                    '''empty.parent_type = 'BONE'
-                    empty.parent_bone = model.ParentBone.name'''
-                    
-                    meshes = model.meshes[0:-1]
-                    #Model has multiple meshes
-                    for m, mesh in enumerate(meshes):
-
-                        #get the parent bone
-                        #parent_bone = parent_clump.data.bones[mesh.Parent]
-                        meshdata = bpy.data.meshes.new(f'{model.name}_{m}')
-                        obj = bpy.data.objects.new(f'{model.name}_{m}', bpy.data.meshes[f'{model.name}_{m}'])
-                        parent_bone = parent_clump.pose.bones[mesh.Parent]
-
-                        bone_indices = {}
-                        for i in range(len(parent_clump.pose.bones)):
-                            obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                            bone_indices[parent_clump.pose.bones[i].name] = i
-
-                        
-                        bm = bmesh.new()
-                        #create vertex weights layer
-                        vgroup_layer = bm.verts.layers.deform.new("Weights")
-
-                        for i in range(mesh.VertexCount):
-                            vert = bm.verts.new(parent_bone.matrix @ Vector(mesh.Vertices[i].Position))
-                            bm.verts.ensure_lookup_table()
-                            bm.verts[i][vgroup_layer][bone_indices[parent_bone.name]] = 1
-
-                        bm.verts.ensure_lookup_table()
-                        bm.verts.index_update()
-
-                        uv_layer = bm.loops.layers.uv.new(f"UV")
-
-
-                        for tris in mesh.Triangles:
-                            face = bm.faces.new((bm.verts[tris[0]], bm.verts[tris[1]], bm.verts[tris[2]]))
-                            face.smooth = True
-                            for loop in face.loops:
-                                original_uv = mesh.Vertices[loop.vert.index].UV
-                                loop[uv_layer].uv = original_uv
-                        bm.faces.ensure_lookup_table()
-                        
-                        
-                        '''for face in bm.faces:
-                            for loop in face.loops:
-                                original_uv = mesh.Vertices[loop.vert.index].UV
-                                loop[uv_layer].uv = original_uv'''
-                                
-                        
-                        bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.00001)
-                        bm.normal_update()
-
-                        
-                        meshdata.auto_smooth_angle = 180
-                        meshdata.use_auto_smooth = True
-
-                        bm.to_mesh(meshdata)
-
-                        #obj = bpy.data.objects.new(f'{model.name}_{m}', bpy.data.meshes[f'{model.name}_{m}'])
-
-                        #add weight groups
-                        '''obj.vertex_groups.new(name = parent_bone.name)
-                        obj.vertex_groups[parent_bone.name].add(range(len(mesh.Vertices)), 1, 'ADD')'''
-
-                        #add armature modifier
-                        armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
-                        armature_modifier.object = parent_clump
-                        
-                        collection.objects.link(bpy.data.objects[f'{model.name}_{m}'])
-
-                        #parent the mesh to the empty
-                        obj.parent = empty
-                        #materal
-                        mat = make_material(model, mesh)
-                        
-                        obj.data.materials.append(mat)
-                        
-                    collection.objects.link(empty)
+                        obj = bpy.data.objects.new(f'{model.name}', blender_mesh)
+                        collection.objects.link(obj)'''
                 
+
+                elif model.meshCount > 0 and model.modelType & 4:
+                    for i, mesh in enumerate(model.meshes[0:-1]):
+                        meshdata = bpy.data.meshes.new(f'{model.name}_{i}')
+                        obj = bpy.data.objects.new(f'{model.name}_{i}', meshdata)
+
+                        meshdata = makeMeshSingleWeight(meshdata)
+                        #add the mesh material
+                        mat = make_material(model, mesh)
+                        obj.data.materials.append(mat)
+                        
+                        if model.clump:
+                            clump = bpy.data.objects.get(model.clump.name)
+                            parent = clump.pose.bones.get(model.lookupNames[mesh.parentIndex])
+                            obj.parent = clump
+                            if parent:
+                                meshdata.transform(parent.matrix)
+
+                                vertex_group = obj.vertex_groups.new(name = parent.name)
+                                vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
+                                obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                                obj.modifiers['Armature'].object = clump
+                        
+                        collection.objects.link(obj)
+                    
                     mesh = model.meshes[-1]
-                    #we're gonna create the object early so we can add the vertex weights
                     meshdata = bpy.data.meshes.new(f'{model.name}_deformable')
-                    meshdata.auto_smooth_angle = 180
-                    meshdata.use_auto_smooth = True
-                    obj = bpy.data.objects.new(f'{model.name}_deformable', bpy.data.meshes[f'{model.name}_deformable'])
+                    obj = bpy.data.objects.new(f'{model.name}_deformable', meshdata)
+
                     bone_indices = {}
+                    parent_clump = bpy.data.objects.get(model.clump.name)
                     for i in range(len(parent_clump.pose.bones)):
                         obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
                         bone_indices[parent_clump.pose.bones[i].name] = i
                     
-                    #print(bone_indices)
-                    bm = bmesh.new()
-                    vgroup_layer = bm.verts.layers.deform.new("Weights")
-                    
+                    obj.parent = parent_clump
 
-                    for i in range(mesh.VertexCount):
-                        #calculate vertex final position
-                        vertex_matrix1 = model.clump.bones[mesh.Vertices[i].Bones[0]].matrix
-                        vertex_matrix2 = model.clump.bones[mesh.Vertices[i].Bones[1]].matrix
-                        vp1 = (vertex_matrix1 @ Vector(mesh.Vertices[i].Positions[0]) * mesh.Vertices[i].Weights[0]) 
+                    meshdata = makeMeshMultiWeight(meshdata, model, bone_indices) 
 
-                        if mesh.Vertices[i].Bones[1] != "":
-                            '''if mesh.Vertices[i].Weights[1] == 0:
-                                print(f"weight is 0, bone is {mesh.Vertices[i].Bones[1]}")
-                                print(f"first bone is {mesh.Vertices[i].Bones[0]}, weight is {mesh.Vertices[i].Weights[0]}")'''
-                            vp2 = (vertex_matrix2 @ Vector(mesh.Vertices[i].Positions[1]) * mesh.Vertices[i].Weights[1])
-                        else:
-                            vp2 = Vector((0,0,0))
-                        
-
-                        vert = bm.verts.new(vp1 + vp2)
-                        
-                        bm.verts.ensure_lookup_table()
-                        #add vertex weights
-                        BoneID1 = bone_indices.get(mesh.Vertices[i].Bones[0])
-                        BoneID2 = bone_indices.get(mesh.Vertices[i].Bones[1])
-                        bm.verts[i][vgroup_layer][BoneID1] = mesh.Vertices[i].Weights[0]
-                        bm.verts[i][vgroup_layer][BoneID2] = mesh.Vertices[i].Weights[1]
-
-                    bm.verts.ensure_lookup_table()
-                    bm.verts.index_update()
-
-                    uv_layer = bm.loops.layers.uv.new(f"UV")
-
-                    for tris in mesh.Triangles:
-                        face = bm.faces.new((bm.verts[tris[0]], bm.verts[tris[1]], bm.verts[tris[2]]))
-                        face.smooth = True
-                        for loop in face.loops:
-                            original_uv = mesh.Vertices[loop.vert.index].UV
-                            loop[uv_layer].uv = original_uv
-                    bm.faces.ensure_lookup_table()
-
-                    #clean up the mesh
-                    bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.00001)
-                    #make sure that all the normals are pointing the right way
-                    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-
-                    bm.to_mesh(meshdata)
-                    collection.objects.link(bpy.data.objects[f'{model.name}_deformable'])
-
-                    #parent the mesh to the empty
-                    obj.parent = empty
-                    #materal
+                    #add the mesh material
                     mat = make_material(model, mesh)
+                    obj.data.materials.append(mat)           
                     
-                    obj.data.materials.append(mat)
+                    collection.objects.link(bpy.data.objects[f'{model.name}_deformable'])
 
                     #add armature modifier
                     armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
                     armature_modifier.object = parent_clump
 
+                else:
+                    #single bone
+                    if model.meshCount > 0:
+                        for m, mesh in enumerate(model.meshes):
+                            meshdata = bpy.data.meshes.new(f'{model.name}')
+                            obj = bpy.data.objects.new(f'{model.name}', meshdata)
+
+                            meshdata = makeMeshSingleWeight(meshdata)
+
+                            #add the mesh material
+                            mat = make_material(model, mesh)
+                            obj.data.materials.append(mat)
+
+                            if model.clump:
+                                clump = bpy.data.objects.get(model.clump.name)
+                                parent = clump.pose.bones.get(model.parentBone.name)
+                                if parent:
+                                    meshdata.transform(parent.matrix)
+
+                                vertex_group = obj.vertex_groups.new(name = parent.name)
+                                vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
+                                obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                                obj.modifiers['Armature'].object = clump
+
+                        obj.parent = clump
+
+                        collection.objects.link(obj)
+                            
+                            #materal
+                            #mat = make_material(model, mesh)
+                            
+                            #obj.data.materials.append(mat)
+                                
         print(f'CCS read in {perf_counter() - start} seconds')
 
-        return {'FINISHED'}
-
-class InstallPillow(Operator):
-    bl_idname = "object.install_pillow"
-    bl_label = "Install Pillow"
-    bl_description = "Install Pillow"
-    bl_options = {'REGISTER', 'INTERNAL'}
-
-    def execute(self, context):
-
-        if install_pillow():
-            self.report({'INFO'}, "Pillow installed successfully")
-        else:
-            self.report({'ERROR'}, "Pillow installation failed")
         return {'FINISHED'}
