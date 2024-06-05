@@ -51,12 +51,13 @@ class RigidMesh(BrStruct):
             for i in range(self.vertexCount):
                 self.vertices[i].color = br.read_uint8(4)
         
-        if version > 0x125:
-            for i in range(self.vertexCount):
-                self.vertices[i].UV = br.read_uint32(2)
-        else:
-            for i in range(self.vertexCount):
-                self.vertices[i].UV = (br.read_int16() / 256, br.read_int16() / 256)
+        if modelFlags & 4 == 0:
+            if version > 0x125:
+                for i in range(self.vertexCount):
+                    self.vertices[i].UV = br.read_uint32(2)
+            else:
+                for i in range(self.vertexCount):
+                    self.vertices[i].UV = (br.read_int16() / 256, br.read_int16() / 256)
     
     def finalize(self, chunks):
         self.material = chunks[self.materialIndex]

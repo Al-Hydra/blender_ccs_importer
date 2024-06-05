@@ -2,7 +2,7 @@ from enum import Enum, IntFlag
 from .utils.PyBinaryReader.binary_reader import *
 from .ccsTypes import CCSTypes
 from .ccsClump import ccsClump
-from .ccsObject import ccsObject, ccsExternalObject
+from .ccsObject import ccsObject, ccsExternalObject, ccsAnmObject
 from .ccsModel import ccsModel
 from .ccsTexture import ccsTexture
 from .ccsClut import ccsClut
@@ -37,12 +37,15 @@ class ccsFile(BrStruct):
         chunkSize = br.read_uint32() * 4
         br.seek(chunkSize, 1)
 
+        index = 0
         #read regular chunks
         while chunkType != CCSTypes.Stream:
             #print(hex(br.pos()))
             chunkType = CCSTypes(br.read_uint16())
             br.seek(2, 1) #skip 0xCCCC bytes
             chunkSize = br.read_uint32() * 4
+
+            #print(f"Reading chunk {chunkType} at {hex(br.pos())} with size {chunkSize}, index {index}")
             
             if chunkType == CCSTypes.Stream:
                 break
@@ -50,6 +53,10 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsClump, None, self.indexTable, self.version)
             elif chunkType == CCSTypes.Object:
                 chunkData = br.read_struct(ccsObject, None, self.indexTable, self.version)
+            elif chunkType == CCSTypes.AnimationObject:
+                chunkData = br.read_struct(ccsAnmObject, None, self.indexTable, self.version)
+            elif chunkType == CCSTypes.External:
+                chunkData = br.read_struct(ccsExternalObject, None, self.indexTable)
             elif chunkType == CCSTypes.Model:
                 chunkData = br.read_struct(ccsModel, None, self.indexTable, self.version)
             elif chunkType == CCSTypes.Texture:
@@ -63,10 +70,13 @@ class ccsFile(BrStruct):
             elif chunkType == CCSTypes.DummyPositionRotation:
                 chunkData = br.read_struct(ccsDummyPosRot, None, self.indexTable)
             else:
+                print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize)
             
             #add the chunk to the chunks dict
             self.chunks[chunkData.index] = chunkData
+
+            index += 1
         
         #read stream section
         self.stream = br.read_struct(ccsStream)

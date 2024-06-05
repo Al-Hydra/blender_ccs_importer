@@ -46,11 +46,14 @@ class Bone(BrStruct):
     
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
+        print(f"Bone: {bone_obj.name}")
+
         bone_obj.finalize(chunks)
         self.name = bone_obj.name
         self.object = bone_obj
-        self.parent = bones.get(bone_obj.parentIndex)
+        if bone_obj.type != "":
+            self.parent = bones.get(bone_obj.parentIndex)
         
-        if self.object.model:
-            self.object.model.clump = clump
-            self.object.model.parentBone = self
+            if self.object.model:
+                self.object.model.clump = clump
+                self.object.model.parentBone = self

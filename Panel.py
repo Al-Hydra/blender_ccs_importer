@@ -52,9 +52,9 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                 mat.use_nodes = True
                 #add image texture
                 tex = mesh.material.texture
-                image = tex.convertToTGA()
                 if tex:
                     img = None
+                    image = tex.convertToTGA()
 
                     if hasattr(tex, "name"):
                         img = bpy.data.images.get(tex.name)    

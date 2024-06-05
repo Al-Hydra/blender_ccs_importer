@@ -39,13 +39,17 @@ class ccsExternalObject(BrStruct):
     def __init__(self) -> None:
         super().__init__()
         self.index = 0
-        self.referencedParentIndex = 0
-        self.referencedObjectIndex = 0
+        self.name = ''
+        self.path = ''
+        self.type = "ExternalObject"
+        self.parentIndex = 0
+        self.objectIndex = 0
 
-    def __br_read__(self, br: BinaryReader, indexTable, version: int):
+    def __br_read__(self, br: BinaryReader, indexTable):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
+
         self.referencedParentIndex = br.read_uint32()
         self.referencedObjectIndex = br.read_uint32()
 
@@ -53,3 +57,35 @@ class ccsExternalObject(BrStruct):
         br.write_uint32(self.index)
         br.write_uint32(self.referencedParentIndex)
         br.write_uint32(self.referencedObjectIndex)
+    
+    def finalize(self, chunks):
+        pass
+
+
+class ccsAnmObject(BrStruct):
+    def __init__(self) -> None:
+        super().__init__()
+        self.index = 0
+        self.name = ''
+        self.path = ''
+        self.type = "AnmObject"
+        self.parentIndex = 0
+        self.modelIndex = 0
+        self.layerIndex = 0
+        self.extraIndex = 0
+
+    def __br_read__(self, br: BinaryReader, indexTable, version: int):
+        self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
+        self.path = indexTable.Names[self.index][1]
+        self.parentIndex = br.read_uint32()
+        self.layerIndex = br.read_uint32()
+        self.shadowIndex = br.read_uint32()
+        if version > 0x120:
+            self.extraIndex = br.read_uint32()
+
+    def finalize(self, chunks):
+        self.parent = chunks[self.parentIndex]
+        self.model = chunks[self.modelIndex]
+        self.shadow = chunks[self.layerIndex]
+        self.extra = chunks[self.extraIndex]
