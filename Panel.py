@@ -272,7 +272,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                         collection.objects.link(obj)'''
                 
 
-                elif model.meshCount > 0 and model.modelType & 4:
+                elif model.meshCount > 0 and model.modelType == 4:
                     for i, mesh in enumerate(model.meshes[0:-1]):
                         meshdata = bpy.data.meshes.new(f'{model.name}_{i}')
                         obj = bpy.data.objects.new(f'{model.name}_{i}', meshdata)
@@ -322,7 +322,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
 
                 else:
                     #single bone
-                    if model.meshCount > 0:
+                    if model.meshCount > 0 and model.modelType == 0:
                         for m, mesh in enumerate(model.meshes):
                             meshdata = bpy.data.meshes.new(f'{model.name}')
                             obj = bpy.data.objects.new(f'{model.name}', meshdata)

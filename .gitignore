@@ -160,3 +160,6 @@ cython_debug/
 #.idea/
 *.pyc
 *.pyc
+ccs_lib/modeltest.bin
+ccs_lib/modeltest.json
+ccs_lib/attempt.py

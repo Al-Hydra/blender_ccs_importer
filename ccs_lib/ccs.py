@@ -8,6 +8,7 @@ from .ccsTexture import ccsTexture
 from .ccsClut import ccsClut
 from .ccsMaterial import ccsMaterial
 from .ccsDummy import ccsDummyPos, ccsDummyPosRot
+from .ccsHit import ccsHit
 from .ccsStream import ccsStream
 from cProfile import Profile
 
@@ -69,6 +70,8 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsDummyPos, None, self.indexTable)
             elif chunkType == CCSTypes.DummyPositionRotation:
                 chunkData = br.read_struct(ccsDummyPosRot, None, self.indexTable)
+            elif chunkType == CCSTypes.HitModel:
+                chunkData = br.read_struct(ccsHit, None, self.indexTable)
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize)

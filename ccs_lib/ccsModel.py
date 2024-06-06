@@ -3,7 +3,7 @@ from .utils.PyBinaryReader.binary_reader import *
 class ModelTypes(IntFlag):
     Rigid1 = 0
     Rigid2   = 1
-    Morphable = 2
+    Unk = 2
     Deformable = 4
     ShadowMesh = 8
 
@@ -27,7 +27,7 @@ class RigidMesh(BrStruct):
             self.vertexCount = br.read_uint32()
         
         if self.vertexCount > 0x10000:
-            exception = ValueError(f'VertexCount is greater than 0x10000: {self.vertexCount}')
+            exception = ValueError(f'VertexCount is greater than 0x10000: {self.vertexCount}, offset = {hex(br.pos())}')
             raise exception
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
@@ -182,6 +182,84 @@ class DeformableMesh(BrStruct):
         self.material = chunks[self.materialID]
         
 
+class unkMesh(BrStruct):
+    def __init__(self):
+        self.material = None
+        self.vertexCount = 0
+        self.unk = 0
+        self.vertices = []
+    def __br_read__(self, br: BinaryReader, vertexScale=64):
+        self.materialID = br.read_uint32()
+        self.sectionCount = br.read_uint32()
+        self.vertices = list()
+        self.normals = list()
+        self.uvs = list()
+        self.colors = list()
+        self.triangleFlags = list()
+        self.vertexWeights = list()
+        self.boneIDs = list()
+        self.triangleIndices = list()
+
+        for i in range(self.sectionCount):
+            br.read_uint8()
+            sectionType = br.read_uint8()
+            br.seek(2, 1)
+            count = br.read_uint32()
+            vertexScale = br.read_float()
+            finalScale = ((vertexScale / 256)  / 16) * 0.01
+            if sectionType == 0:
+                for i in range(count):
+                    #vertex normals
+                    self.normals.append((br.read_int8() / 64, br.read_int8() / 64, br.read_int8() / 64))
+
+                '''align_amount = 4 - ((3 * count) % 4)
+                br.seek(align_amount, 1)'''
+                br.align_pos(4)
+            
+            elif sectionType == 1:
+                #uvs
+                for i in range(count):
+                    self.uvs.append((br.read_int16() / 256, br.read_int16() / 256))
+
+                '''align_amount = 4 - ((4 * count) % 4)
+                br.seek(align_amount, 1)'''
+                br.align_pos(4)
+            
+            elif sectionType == 7:
+                #triangle flags
+                for i in range(count):
+                    self.triangleFlags.append(br.read_uint8())
+
+                br.align_pos(4)
+            
+            elif sectionType == 8:
+                #triangle indices
+                for i in range(count):
+                    self.triangleIndices.append(br.read_uint16())
+
+                br.align_pos(4)
+
+            elif sectionType == 32:
+                #vertex positions and weights
+                for i in range(count):
+                    self.vertices.append((br.read_int16() * finalScale, br.read_int16() * finalScale, br.read_int16() * finalScale))
+                    vertParams = br.read_uint16()
+                    self.boneIDs.append(vertParams >> 10)
+                    self.vertexWeights.append((vertParams & 0x1ff) / 256)
+
+                '''align_amount = 4 - ((8 * count) % 4)
+                br.seek(align_amount, 1)'''
+                br.align_pos(4)
+            
+            elif sectionType == 33:
+                #unk
+                br.read_uint16(count)
+                br.align_pos(4)
+
+    
+    def finalize(self, chunks):
+        self.material = chunks[self.materialID]
+
 
 class ccsModel(BrStruct):
     def __init__(self):
@@ -226,17 +304,20 @@ class ccsModel(BrStruct):
         self.meshes = list()
         if self.meshCount > 0:
             
-            if self.modelType & ModelTypes.Deformable:
+            if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.Unk:
                 for i in range(self.meshCount-1):
                     self.meshes.append(br.read_struct(RigidMesh, None, True, self.vertexScale, self.modelFlags, version))
                 
                 self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale))
 
-            elif self.modelType & ModelTypes.ShadowMesh:
+            elif self.modelType == ModelTypes.ShadowMesh:
                 self.meshes.append(br.read_struct(ShadowMesh))
+            
+            elif self.modelType & ModelTypes.Unk:
+                for i in range(self.meshCount):
+                    self.meshes.append(br.read_struct(unkMesh, None, self.vertexScale))
 
             else:
-                #self.modelFlags == ModelTypes.Rigid1 or self.modelType == ModelTypes.Rigid2:
                 for i in range(self.meshCount):
                     rigidmesh = br.read_struct(RigidMesh, None, False, self.vertexScale, self.modelFlags, version)
                     self.meshes.append(rigidmesh)
@@ -245,9 +326,13 @@ class ccsModel(BrStruct):
         if self.modelType == ModelTypes.ShadowMesh:
             self.meshes[0].finalize(chunks)
         
-        if self.clump and self.lookupList:
-            self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
-            self.lookupNames = [chunks[i].name for i in self.lookupList]
+        if self.modelType == ModelTypes.Deformable:
+            if self.clump and self.lookupList:
+                self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
+                self.lookupNames = [chunks[i].name for i in self.lookupList]
+            else:
+                self.lookupList = self.clump.boneIndices
+                self.lookupNames = [chunks[i].name for i in self.lookupList]
         
         for mesh in self.meshes:
             if mesh:
