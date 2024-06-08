@@ -41,12 +41,12 @@ class ccsFile(BrStruct):
         index = 0
         #read regular chunks
         while chunkType != CCSTypes.Stream:
-            #print(hex(br.pos()))
+            print(hex(br.pos()))
             chunkType = CCSTypes(br.read_uint16())
             br.seek(2, 1) #skip 0xCCCC bytes
             chunkSize = br.read_uint32() * 4
 
-            #print(f"Reading chunk {chunkType} at {hex(br.pos())} with size {chunkSize}, index {index}")
+            print(f"Reading chunk {chunkType} at {hex(br.pos())} with size {chunkSize}, index {index}")
             
             if chunkType == CCSTypes.Stream:
                 break

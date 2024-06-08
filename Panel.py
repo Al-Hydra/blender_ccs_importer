@@ -137,6 +137,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
             bm.to_mesh(meshdata)
             return meshdata'''
 
+
         def makeMeshMultiWeight(meshdata, model, bone_indices):        
             bm = bmesh.new()
             vgroup_layer = bm.verts.layers.deform.new("Weights")
@@ -216,6 +217,69 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
 
             return meshdata
 
+
+        def makeMeshTriList(meshdata, model, mesh, bone_indices):
+            bm = bmesh.new()
+            uv_layer = bm.loops.layers.uv.new(f"UV")
+            vgroup_layer = bm.verts.layers.deform.new("Weights")
+
+            for i, ccsVertex in enumerate(mesh.vertices):
+                #calculate vertex final position
+                boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
+                boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
+
+                vertex_matrix1 = model.clump.bones[boneID1].matrix
+                vertex_matrix2 = model.clump.bones[boneID2].matrix
+                vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
+
+                if ccsVertex.boneIDs[1] != "":
+                    vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
+                else:
+                    vp2 = Vector((0,0,0))
+                
+
+                bmVertex = bm.verts.new(vp1 + vp2)
+
+                bm.verts.ensure_lookup_table()
+                bm.verts.index_update()
+
+                #add vertex weights
+                boneID1 = bone_indices[model.lookupNames[ccsVertex.boneIDs[0]]]
+                boneID2 = bone_indices[model.lookupNames[ccsVertex.boneIDs[1]]]
+
+                if ccsVertex.weights[0] == 1:
+                     bmVertex[vgroup_layer][boneID1] = 1
+                else:
+                    bmVertex[vgroup_layer][boneID1] = ccsVertex.weights[0]
+                    bmVertex[vgroup_layer][boneID2] = ccsVertex.weights[1]
+
+                
+            for i in range(len(mesh.triangleIndices)):
+                flag = mesh.triangleFlags[i]
+                if flag == 0:
+                    try:
+                        vert1 = mesh.triangleIndices[i]
+                        vert2 = mesh.triangleIndices[i-1]
+                        vert3 = mesh.triangleIndices[i-2]
+                        face = bm.faces.new((bm.verts[vert1], bm.verts[vert2], bm.verts[vert3]))
+                        face.smooth = True
+
+                        triUV1 = mesh.uvs[i]
+                        triUV2 = mesh.uvs[i-1]
+                        triUV3 = mesh.uvs[i-2]
+
+                        face.loops[0][uv_layer].uv = triUV1
+                        face.loops[1][uv_layer].uv = triUV2
+                        face.loops[2][uv_layer].uv = triUV3
+                    except:
+                        print(f"error at {i}")
+
+                bm.faces.ensure_lookup_table()
+
+            bm.to_mesh(meshdata)
+            return meshdata
+            
+
         collection = bpy.data.collections.new(ccsf.name)
         bpy.context.collection.children.link(collection)    
         for cmp in ccsf.chunks.values():
@@ -256,7 +320,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
             if model != None and model.type == 'Model':
                 if model.meshCount > 0 and model.modelType & 8:
                     continue
-                    '''for i, mesh in enumerate(model.meshes):                        
+                    for i, mesh in enumerate(model.meshes):                        
                         bm = bmesh.new()
 
                         verts = [bm.verts.new(v.position) for v in mesh.vertices]
@@ -269,7 +333,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                         bm.to_mesh(blender_mesh)
 
                         obj = bpy.data.objects.new(f'{model.name}', blender_mesh)
-                        collection.objects.link(obj)'''
+                        collection.objects.link(obj)
                 
 
                 elif model.meshCount > 0 and model.modelType == 4:
@@ -287,7 +351,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                             parent = clump.pose.bones.get(model.lookupNames[mesh.parentIndex])
                             obj.parent = clump
                             if parent:
-                                meshdata.transform(parent.matrix)
+                                #meshdata.transform(parent.matrix)
 
                                 vertex_group = obj.vertex_groups.new(name = parent.name)
                                 vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
@@ -308,7 +372,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                     
                     obj.parent = parent_clump
 
-                    meshdata = makeMeshMultiWeight(meshdata, model, bone_indices) 
+                    meshdata = makeMeshMultiWeight(meshdata, model, bone_indices)
 
                     #add the mesh material
                     mat = make_material(model, mesh)
@@ -320,9 +384,39 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                     armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
                     armature_modifier.object = parent_clump
 
+                elif model.meshCount > 0 and model.modelType & 2:
+                        for m, mesh in enumerate(model.meshes):
+                            meshdata = bpy.data.meshes.new(f'{model.name}')
+                            obj = bpy.data.objects.new(f'{model.name}', meshdata)
+
+                            bone_indices = {}
+                            parent_clump = bpy.data.objects.get(model.clump.name)
+                            for i in range(len(parent_clump.pose.bones)):
+                                obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
+                                bone_indices[parent_clump.pose.bones[i].name] = i
+
+                            meshdata = makeMeshTriList(meshdata, model, mesh, bone_indices)
+
+                            #add the mesh material
+                            mat = make_material(model, mesh)
+                            obj.data.materials.append(mat)
+
+                            if model.clump:
+                                clump = bpy.data.objects.get(model.clump.name)
+                                parent = clump.pose.bones.get(model.parentBone.name)
+                                if parent:
+                                    meshdata.transform(model.parentBone.matrix)
+
+                                obj.parent = clump
+                                
+                        #add armature modifier
+                        armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
+                        armature_modifier.object = parent_clump
+                        collection.objects.link(obj)
+
                 else:
                     #single bone
-                    if model.meshCount > 0 and model.modelType == 0:
+                    if model.meshCount > 0 and model.modelType < 2:
                         for m, mesh in enumerate(model.meshes):
                             meshdata = bpy.data.meshes.new(f'{model.name}')
                             obj = bpy.data.objects.new(f'{model.name}', meshdata)
@@ -337,21 +431,16 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                                 clump = bpy.data.objects.get(model.clump.name)
                                 parent = clump.pose.bones.get(model.parentBone.name)
                                 if parent:
-                                    meshdata.transform(parent.matrix)
+                                    meshdata.transform(model.parentBone.matrix)
 
                                 vertex_group = obj.vertex_groups.new(name = parent.name)
                                 vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
                                 obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
                                 obj.modifiers['Armature'].object = clump
 
-                        obj.parent = clump
+                                obj.parent = clump
 
                         collection.objects.link(obj)
-                            
-                            #materal
-                            #mat = make_material(model, mesh)
-                            
-                            #obj.data.materials.append(mat)
                                 
         print(f'CCS read in {perf_counter() - start} seconds')
 

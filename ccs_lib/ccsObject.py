@@ -81,8 +81,7 @@ class ccsAnmObject(BrStruct):
         self.parentIndex = br.read_uint32()
         self.layerIndex = br.read_uint32()
         self.shadowIndex = br.read_uint32()
-        if version > 0x120:
-            self.extraIndex = br.read_uint32()
+        self.extraIndex = br.read_uint32()
 
     def finalize(self, chunks):
         self.parent = chunks[self.parentIndex]

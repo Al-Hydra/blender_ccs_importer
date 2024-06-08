@@ -201,7 +201,7 @@ class unkMesh(BrStruct):
         self.triangleIndices = list()
 
         for i in range(self.sectionCount):
-            br.read_uint8()
+            sectionFlags = br.read_uint8()
             sectionType = br.read_uint8()
             br.seek(2, 1)
             count = br.read_uint32()
@@ -211,54 +211,71 @@ class unkMesh(BrStruct):
                 for i in range(count):
                     #vertex normals
                     self.normals.append((br.read_int8() / 64, br.read_int8() / 64, br.read_int8() / 64))
-
-                '''align_amount = 4 - ((3 * count) % 4)
-                br.seek(align_amount, 1)'''
-                br.align_pos(4)
             
             elif sectionType == 1:
                 #uvs
                 for i in range(count):
                     self.uvs.append((br.read_int16() / 256, br.read_int16() / 256))
-
-                '''align_amount = 4 - ((4 * count) % 4)
-                br.seek(align_amount, 1)'''
-                br.align_pos(4)
             
             elif sectionType == 7:
                 #triangle flags
                 for i in range(count):
                     self.triangleFlags.append(br.read_uint8())
 
-                br.align_pos(4)
             
             elif sectionType == 8:
                 #triangle indices
                 for i in range(count):
                     self.triangleIndices.append(br.read_uint16())
 
-                br.align_pos(4)
 
             elif sectionType == 32:
                 #vertex positions and weights
-                for i in range(count):
-                    self.vertices.append((br.read_int16() * finalScale, br.read_int16() * finalScale, br.read_int16() * finalScale))
-                    vertParams = br.read_uint16()
-                    self.boneIDs.append(vertParams >> 10)
-                    self.vertexWeights.append((vertParams & 0x1ff) / 256)
+                if sectionFlags == 33:
+                    for i in range(count):
+                        vertex = DeformableVertex()
+                        vertex.positions[0] = ((br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale))
+                        
+                        vertParams = br.read_uint16()
+                        vertex.boneIDs[0] = vertParams >> 10
+                        vertex.weights[0] = (vertParams & 0x1ff) / 256
+                        #print((vertParams & 0x1ff) / 256)
 
-                '''align_amount = 4 - ((8 * count) % 4)
-                br.seek(align_amount, 1)'''
-                br.align_pos(4)
+                        self.vertices.append(vertex)
+                
+                elif sectionFlags == 34:
+                    for i in range(count//2):
+                        vertex = DeformableVertex()
+
+                        vertex.positions[0] = ((br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale))
+                        vertParams = br.read_uint16()
+                        vertex.boneIDs[0] = vertParams >> 10
+                        vertex.weights[0] = (vertParams & 0x1ff) / 256
+
+                        vertex.positions[1] = ((br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale),
+                                            (br.read_int16() * finalScale))
+                        vertParams = br.read_uint16()
+                        vertex.boneIDs[1] = vertParams >> 10
+                        vertex.weights[1] = (vertParams & 0x1ff) / 256
+
+                        self.vertices.append(vertex)
+
             
             elif sectionType == 33:
-                #unk
-                br.read_uint16(count)
-                br.align_pos(4)
+                self.clumpIndex = br.read_uint32()
+            
+            br.align_pos(4)
 
     
     def finalize(self, chunks):
         self.material = chunks[self.materialID]
+        self.clump = chunks[self.clumpIndex]
+        self.lookupList = self.clump.boneIndices
 
 
 class ccsModel(BrStruct):
@@ -305,10 +322,14 @@ class ccsModel(BrStruct):
         if self.meshCount > 0:
             
             if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.Unk:
-                for i in range(self.meshCount-1):
-                    self.meshes.append(br.read_struct(RigidMesh, None, True, self.vertexScale, self.modelFlags, version))
-                
-                self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale))
+
+                if self.lookupListCount > 1:
+                    for i in range(self.meshCount-1):
+                        self.meshes.append(br.read_struct(RigidMesh, None, True, self.vertexScale, self.modelFlags, version))
+                    
+                    self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale))
+                else:
+                    self.meshes.append(br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version))
 
             elif self.modelType == ModelTypes.ShadowMesh:
                 self.meshes.append(br.read_struct(ShadowMesh))
@@ -322,10 +343,7 @@ class ccsModel(BrStruct):
                     rigidmesh = br.read_struct(RigidMesh, None, False, self.vertexScale, self.modelFlags, version)
                     self.meshes.append(rigidmesh)
     
-    def finalize(self, chunks):
-        if self.modelType == ModelTypes.ShadowMesh:
-            self.meshes[0].finalize(chunks)
-        
+    def finalize(self, chunks):        
         if self.modelType == ModelTypes.Deformable:
             if self.clump and self.lookupList:
                 self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
@@ -333,6 +351,10 @@ class ccsModel(BrStruct):
             else:
                 self.lookupList = self.clump.boneIndices
                 self.lookupNames = [chunks[i].name for i in self.lookupList]
+        
+        elif self.modelType & ModelTypes.Unk:
+            self.lookupList = self.clump.boneIndices
+            self.lookupNames = [chunks[i].name for i in self.lookupList]
         
         for mesh in self.meshes:
             if mesh:
@@ -354,25 +376,7 @@ class Vertex(BrStruct):
         self.UV = (uv[0] / 256, (uv[1] / 256))
         self.triangleFlag = flag
 
-class DeformableVertex:
-    '''def __init__(self, p=(0,0,0), n=(0,0,0), w=(0,0,0,0), uv=(0,0), b=(0,0,0,0), triangleflag = 0, scale = 256, lookup= None):
-        scale = ((scale / 256) * (0.0625 * 0.01))
-        #scale = scale * 0.00000225
-        self.Positions = [(p[0][0] * scale, p[0][1] * scale, p[0][2] * scale),
-                            (p[1][0] * scale, p[1][1] * scale, p[1][2] * scale),
-                            (p[2][0] * scale, p[2][1] * scale, p[2][2] * scale),
-                            (p[3][0] * scale, p[3][1] * scale, p[3][2] * scale)]
-        
-        self.Normals = ((n[0][0] / 127, n[0][1] / 127, n[0][2] / 127),
-                        (n[1][0] / 127, n[1][1] / 127, n[1][2] / 127),
-                        (n[2][0] / 127, n[2][1] / 127, n[2][2] / 127),
-                        (n[3][0] / 127, n[3][1] / 127, n[3][2] / 127))
-        
-        self.Weights = [w[0] / 256, w[1] / 256, w[2] / 256, w[3] / 256]
-        self.UV = [uv[0] / 256, uv[1] / 256]
-        self.Bones = (lookup[b[0]], lookup[b[1]], lookup[b[2]], lookup[b[3]])
-        self.TriangleFlag = triangleflag'''
-    
+class DeformableVertex:    
     def __init__(self):
         self.positions = [(0, 0, 0), (0, 0, 0)]
         self.normals = [(0, 0, 0), (0, 0, 0)]
