@@ -351,7 +351,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                             parent = clump.pose.bones.get(model.lookupNames[mesh.parentIndex])
                             obj.parent = clump
                             if parent:
-                                #meshdata.transform(parent.matrix)
+                                meshdata.transform(parent.matrix)
 
                                 vertex_group = obj.vertex_groups.new(name = parent.name)
                                 vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
@@ -405,7 +405,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                                 clump = bpy.data.objects.get(model.clump.name)
                                 parent = clump.pose.bones.get(model.parentBone.name)
                                 if parent:
-                                    meshdata.transform(model.parentBone.matrix)
+                                    meshdata.transform(parent.matrix)
 
                                 obj.parent = clump
                                 
@@ -431,7 +431,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator):
                                 clump = bpy.data.objects.get(model.clump.name)
                                 parent = clump.pose.bones.get(model.parentBone.name)
                                 if parent:
-                                    meshdata.transform(model.parentBone.matrix)
+                                    meshdata.transform(parent.matrix)
 
                                 vertex_group = obj.vertex_groups.new(name = parent.name)
                                 vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
