@@ -11,6 +11,7 @@ from .ccsDummy import ccsDummyPos, ccsDummyPosRot
 from .ccsHit import ccsHit
 from .ccsStream import ccsStream
 from cProfile import Profile
+import gzip
 
 
 class ccsFile(BrStruct):
@@ -136,6 +137,10 @@ class ccsChunk(BrStruct):
 def readCCS(filePath):
     with open(filePath, "rb") as f:
         fileBytes = f.read()
+        #check if the file is gzipped
+        if fileBytes[:2] == b'\x1f\x8b':
+            fileBytes = gzip.decompress(fileBytes)
+            print("File is gzipped")
 
     br = BinaryReader(fileBytes, encoding='cp932')
     ccs = br.read_struct(ccsFile)
