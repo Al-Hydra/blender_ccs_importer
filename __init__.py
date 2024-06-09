@@ -19,22 +19,32 @@ bl_info = {
     "version" : (1, 0, 5),
     "location" : "View3D",
     "warning" : "",
-    "category" : "Object"
+    "category" : "Import"
 }
 
 import bpy
 
 from . import Panel
+from .importer import *
 
 
 def register():
-    bpy.utils.register_class(Panel.CCS_IMPORTER_PT_PANEL)
-    bpy.utils.register_class(Panel.CCS_IMPORTER_OT_IMPORT)
-    bpy.utils.register_class(Panel.CCS_PropertyGroup)
-    bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=Panel.CCS_PropertyGroup)
+    '''bpy.utils.register_class(Panel.CCS_IMPORTER_PT_PANEL)
+    bpy.utils.register_class(Panel.CCS_IMPORTER_OT_IMPORT)'''
+    bpy.utils.register_class(CCS_PropertyGroup)
+    bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=CCS_PropertyGroup)
+    bpy.utils.register_class(CCS_IMPORTER_OT_IMPORT)
+    bpy.utils.register_class(DropCCS)
+    bpy.utils.register_class(CCS_FH_import)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+
 
 def unregister():
-    bpy.utils.unregister_class(Panel.CCS_IMPORTER_PT_PANEL)
+    '''bpy.utils.unregister_class(Panel.CCS_IMPORTER_PT_PANEL)
     bpy.utils.unregister_class(Panel.CCS_IMPORTER_OT_IMPORT)
-    bpy.utils.unregister_class(Panel.CCS_PropertyGroup)
+    bpy.utils.unregister_class(Panel.CCS_PropertyGroup)'''
+    bpy.utils.unregister_class(CCS_IMPORTER_OT_IMPORT)
+    bpy.utils.unregister_class(DropCCS)
+    bpy.utils.unregister_class(CCS_FH_import)
     del bpy.types.Scene.ccs_importer
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)

@@ -46,7 +46,7 @@ class Bone(BrStruct):
     
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
-        print(f"Bone: {bone_obj.name}")
+        #print(f"Bone: {bone_obj.name}")
 
         bone_obj.finalize(chunks)
         self.name = bone_obj.name

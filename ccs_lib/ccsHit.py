@@ -22,12 +22,6 @@ class hitMesh(BrStruct):
     def __br_read__(self, br: BinaryReader):
         self.vertexCount = br.read_uint32()
         self.hitParams = br.read_uint32()
-        self.verticesSet1 = [br.read_struct(hitVertex) for i in range(self.vertexCount)]
-        self.verticesSet2 = [br.read_struct(hitVertex) for i in range(self.vertexCount)]
+        self.verticesSet1 = [br.read_float(3) for i in range(self.vertexCount)]
+        self.verticesSet2 = [br.read_float(3) for i in range(self.vertexCount)]
 
-
-class hitVertex:
-    def __init__(self):
-        self.posX = 0
-        self.posY = 0
-        self.posZ = 0
