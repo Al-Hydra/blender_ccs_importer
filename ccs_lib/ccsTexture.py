@@ -10,25 +10,6 @@ class textureTypes(Enum):
     DXT1 = 0x87
     DXT5 = 0x89
 
-'''
-class Texture(CCSChunk):
-    def init_data(self, chunk: BrTexture, Refs: ChunkRefs = None, chunks: ChunksDict = None):
-        self.ColorTable: Color_Palette = chunks[chunk.ClutID]
-        self.BlitGroup = chunk.BlitGroup
-        self.TextureFlags = chunk.TextureFlags
-        self.textureType = textureTypes(chunk.textureType).name
-        self.MipmapsCount = chunk.MipmapsCount
-        self.width = chunk.Actualwidth
-        self.height = chunk.Actualheight
-
-        self.textureData = chunk.textureData
-
-        if self.textureType == 'Indexed8':
-            self.Image = I8toBMP(self.width, self.height, self.textureData, self.ColorTable.PaletteData)
-        elif self.textureType == 'Indexed4':
-            self.Image = I4toBMP(self.width, self.height, self.textureData, self.ColorTable.PaletteData)
-'''
-
 class ccsTexture(BrStruct):
 
     def __init__(self):

@@ -22,6 +22,9 @@ class ccsMaterial(BrStruct):
         else:
             self.offsetX = br.read_uint16()
             self.offsetY = br.read_uint16()
+        
+        if version >= 0x125:
+            values = br.read_float(18)
     
 
     def finalize(self, chunks):

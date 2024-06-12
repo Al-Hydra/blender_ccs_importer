@@ -38,6 +38,7 @@ class Bone(BrStruct):
         self.rot = (0,0,0)
         self.scale = (1,1,1)
         self.matrix = [(0,0,0,0), (0,0,0,0), (0,0,0,0), (0,0,0,0)]
+        self.clump = None
 
     def __br_read__(self, br: BinaryReader):
         self.pos = br.read_float(3)
@@ -46,8 +47,8 @@ class Bone(BrStruct):
     
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
-        #print(f"Bone: {bone_obj.name}")
-
+        bone_obj.clump = clump
+        
         bone_obj.finalize(chunks)
         self.name = bone_obj.name
         self.object = bone_obj

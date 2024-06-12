@@ -47,14 +47,14 @@ class RigidMesh(BrStruct):
                                         br.read_int8() / 64)
             self.vertices[i].triangleFlag = br.read_uint8()
 
-        if modelFlags & 2 == 0 and not deformable:
+        if ((modelFlags & 2) != 2) and not deformable:
             for i in range(self.vertexCount):
                 self.vertices[i].color = br.read_uint8(4)
         
         if modelFlags & 4 == 0:
             if version > 0x125:
                 for i in range(self.vertexCount):
-                    self.vertices[i].UV = br.read_uint32(2)
+                    self.vertices[i].UV = (br.read_int32() / 65536, br.read_int32() / 65536)
             else:
                 for i in range(self.vertexCount):
                     self.vertices[i].UV = (br.read_int16() / 256, br.read_int16() / 256)
@@ -94,7 +94,7 @@ class DeformableMesh(BrStruct):
         self.vertexCount = 0
         self.unk = 0
         self.vertices = []
-    def __br_read__(self, br: BinaryReader, vertexScale=256):
+    def __br_read__(self, br: BinaryReader, vertexScale=256, version = 0x100):
         self.materialID = br.read_uint32()
         #print(f'MaterialID = {self.MaterialID}')
         self.vertexCount = br.read_uint32() #This is the number of vertices that are actually used
@@ -106,81 +106,83 @@ class DeformableMesh(BrStruct):
         #print(f'TotalVertexCount = {self.TotalVertexCount}')
         self.vertices = list()
 
-        finalScale = ((vertexScale / 256) * (0.0625 * 0.01))
+        finalScale = ((vertexScale / 256)  / 16) * 0.01
 
-        for i in range(self.vertexCount):
+        if version < 0x125:
+            vpBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 8), encoding='cp932')
+            vnBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 4), encoding='cp932')
+            uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
 
-            vertex = DeformableVertex()
+            for i in range(self.vertexCount):
 
-            vertex.positions[0] = ((br.read_int16() * finalScale),
-                                        (br.read_int16() * finalScale),
-                                        (br.read_int16() * finalScale))     
+                vertex = DeformableVertex()
+                
+                vertex.positions[0] = ((vpBuffer.read_int16() * finalScale),
+                                        (vpBuffer.read_int16() * finalScale),
+                                        (vpBuffer.read_int16() * finalScale))
 
-            vertParams = br.read_uint16()
-            if vertParams == 0xFFFF:
-                raise ValueError(f'Vertex {i} has a weight of 0xFFFF')
-            elif vertParams == 0:
-                raise ValueError(f'Vertex {i} has a weight of 0')
-            
-            #print(vertParams)
+                vertParams = vpBuffer.read_uint16()
+                vertex.boneIDs[0] = vertParams >> 10
+                vertex.weights[0] = (vertParams & 0x1ff) / 256
 
-            vertex.boneIDs[0] = vertParams >> 10
-            vertex.weights[0] = (vertParams & 0x1ff) / 256
-            if vertex.weights[0] == 0:
-                raise ValueError(f'Vertex {i} has a weight of 0')
-            elif vertex.weights[0] > 1 or  vertex.weights[0] < 0:
-                raise ValueError(f'Vertex {i} has a weight greater than 1 or less than 0')
-            
-            if ((vertParams >> 9) & 0x1) == 0:
-                vertex.multiWeight = True
-                vertex.positions[1] = ((br.read_int16()) * finalScale,
-                                        (br.read_int16()) * finalScale,
-                                        (br.read_int16()) * finalScale)
-                secondParams = br.read_uint16()
-                vertex.weights[1] = (secondParams & 0x1ff) / 256
-                vertex.boneIDs[1] = (secondParams >> 10)
-                if vertex.weights[1] > 1 or vertex.weights[1] < 0:
-                    raise ValueError(f'Vertex {i} has a weight greater than 1 or less than 0')
-            
-            self.vertices.append(vertex)
+                vertex.normals[0] = (vnBuffer.read_int8() / 64,
+                                     vnBuffer.read_int8() / 64,
+                                     vnBuffer.read_int8() / 64)
+                vertex.triangleFlag = vnBuffer.read_int8()
+                
+                if ((vertParams >> 9) & 0x1) == 0:
+                    vertex.positions[1] = ((vpBuffer.read_int16()) * finalScale,
+                                           (vpBuffer.read_int16()) * finalScale,
+                                           (vpBuffer.read_int16()) * finalScale)
                     
-        for i in range(self.vertexCount):
-            self.vertices[i].normals[0] = (br.read_int8() / 64,
-                                             br.read_int8() / 64,
-                                             br.read_int8() / 64)
+                    secondParams = vpBuffer.read_uint16()
+                    vertex.weights[1] = (secondParams & 0x1ff) / 256
+                    vertex.boneIDs[1] = (secondParams >> 10)
 
-            self.vertices[i].triangleFlag = br.read_int8()
-            if self.vertices[i].multiWeight:
-                self.vertices[i].normals[1] = (br.read_int8() / 64,
-                                                br.read_int8() / 64,
-                                                br.read_int8() / 64)
-                br.read_int8()
+                    vertex.normals[1] = (vnBuffer.read_int8() / 64,
+                                         vnBuffer.read_int8() / 64,
+                                         vnBuffer.read_int8() / 64)
+                    vertex.triangleFlag = vnBuffer.read_int8()
+
+                vertex.UV = (uvBuffer.read_int16() / 256, uvBuffer.read_int16() / 256)
+                
+                self.vertices.append(vertex)
         
-        for i in range(self.vertexCount):
-            self.vertices[i].UV = (br.read_int16() / 256, br.read_int16() / 256)
-        
-        
-        '''for i, v in enumerate(self.Vertices):
-            v_dict = dict()
-            v_dict['Position1'] = v.Positions[0]
-            v_dict['Position2'] = v.Positions[1]
-            v_dict['Normal1'] = v.Normals[0]
-            v_dict['Normal2'] = v.Normals[1]
-            v_dict['UV'] = v.UV
-            v_dict['BoneID1'] = v.BoneIDs[0]
-            v_dict['BoneID2'] = v.BoneIDs[1]
-            v_dict['Weight1'] = v.Weights[0]
-            v_dict['Weight2'] = v.Weights[1]
-            v_dict['TriangleFlag'] = v.TriangleFlag
-            v_dict['MultiWeight'] = v.MultiWeight
-            vertex_list[i] = v_dict
-        
-        with open('vertex_list.json', 'w') as f:
-            json.dump(vertex_list, f, indent=4)
-    '''
+        else:
+            vpBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 0x0c), encoding='cp932')
+            vnBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 4), encoding='cp932')
+            uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 8), encoding='cp932')
+
+            for i in range(self.vertexCount):
+                vertex = DeformableVertex()
+
+                stopBit = 0
+                i = 0
+                while(stopBit == 0):
+                    vertex.positions[i] = ((vpBuffer.read_int16() * finalScale),
+                                                (vpBuffer.read_int16() * finalScale),
+                                                (vpBuffer.read_int16() * finalScale))
+                    
+                    vertex.weights[i] = vpBuffer.read_int16() / 256
+                    stopBit = vpBuffer.read_int16()
+                    vertex.boneIDs[i] = vpBuffer.read_int16()
+
+                    vertex.normals[i] =  (vnBuffer.read_int8() / 64,
+                                          vnBuffer.read_int8() / 64,
+                                          vnBuffer.read_int8() / 64)
+                    
+                    vertex.triangleFlag = vnBuffer.read_int8()
+
+                    i += 1
+
+                vertex.UV = (uvBuffer.read_int32() / 65536, uvBuffer.read_int32() / 65536)
+
+                self.vertices.append(vertex)
+                
+
     def finalize(self, chunks):
         self.material = chunks[self.materialID]
-        
+
 
 class unkMesh(BrStruct):
     def __init__(self):
@@ -291,6 +293,7 @@ class ccsModel(BrStruct):
         self.modelFlags = 0
         self.meshCount = 0
         self.sourceFactor = 0
+        self.boundingBox = None
 
 
     def __br_read__(self, br: BinaryReader, indexTable, version=0x110):
@@ -327,7 +330,7 @@ class ccsModel(BrStruct):
                     for i in range(self.meshCount-1):
                         self.meshes.append(br.read_struct(RigidMesh, None, True, self.vertexScale, self.modelFlags, version))
                     
-                    self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale))
+                    self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale, version))
                 else:
                     self.meshes.append(br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version))
 
@@ -344,7 +347,7 @@ class ccsModel(BrStruct):
                     self.meshes.append(rigidmesh)
     
     def finalize(self, chunks):        
-        if self.modelType == ModelTypes.Deformable:
+        if self.modelType & ModelTypes.Deformable:
             if self.clump and self.lookupList:
                 self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
                 self.lookupNames = [chunks[i].name for i in self.lookupList]
@@ -378,10 +381,10 @@ class Vertex(BrStruct):
 
 class DeformableVertex:    
     def __init__(self):
-        self.positions = [(0, 0, 0), (0, 0, 0)]
-        self.normals = [(0, 0, 0), (0, 0, 0)]
-        self.weights = [0, 0]
+        self.positions = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+        self.normals = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+        self.weights = [0, 0, 0, 0]
         self.UV = [0, 0]
-        self.boneIDs = [0, 0]
+        self.boneIDs = [0, 0, 0, 0]
         self.triangleFlag = 0
         self.multiWeight = False

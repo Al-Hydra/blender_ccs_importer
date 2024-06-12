@@ -10,6 +10,10 @@ from .ccsMaterial import ccsMaterial
 from .ccsDummy import ccsDummyPos, ccsDummyPosRot
 from .ccsHit import ccsHit
 from .ccsStream import ccsStream
+from  .ccsBox import ccsBox
+from .ccsCamera import ccsCamera
+from .ccsAnimation import ccsAnimation
+from .ccsMorph import ccsMorph
 from cProfile import Profile
 import gzip
 
@@ -29,9 +33,7 @@ class ccsFile(BrStruct):
         self.indexTable = br.read_struct(ccsIndex)
 
         #fill the chunks dict with values from the index table
-        for i, name in enumerate(self.indexTable.Names):
-            #self.chunks[i] = (None, None, name[0], name[1])
-            self.chunks[i] = None
+        self.chunks = {i: None for  i in range(self.indexTable.NamesCount)}
 
         #read setup section
         chunkType = CCSTypes(br.read_uint16())
@@ -61,6 +63,10 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsExternalObject, None, self.indexTable)
             elif chunkType == CCSTypes.Model:
                 chunkData = br.read_struct(ccsModel, None, self.indexTable, self.version)
+            elif chunkType == CCSTypes.Morpher:
+                chunkData = br.read_struct(ccsMorph, None, self.indexTable)
+            elif chunkType == CCSTypes.BoundingBox:
+                chunkData = br.read_struct(ccsBox, None, self.indexTable)
             elif chunkType == CCSTypes.Texture:
                 chunkData = br.read_struct(ccsTexture, None, self.indexTable, self.version)
             elif chunkType == CCSTypes.Clut:
@@ -73,6 +79,10 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsDummyPosRot, None, self.indexTable)
             elif chunkType == CCSTypes.HitModel:
                 chunkData = br.read_struct(ccsHit, None, self.indexTable)
+            elif chunkType == CCSTypes.Camera:
+                chunkData = br.read_struct(ccsCamera, None, self.indexTable)
+            elif chunkType == CCSTypes.Animation:
+                chunkData = br.read_struct(ccsAnimation, None, self.indexTable, self.version)
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize)
@@ -145,3 +155,9 @@ def readCCS(filePath):
     br = BinaryReader(fileBytes, encoding='cp932')
     ccs = br.read_struct(ccsFile)
     return ccs
+
+
+if __name__ == "__main__":
+    ccs = readCCS("D:\CCS\Infection\cbu1body.ccs")
+
+    print(ccs.header.FileName)

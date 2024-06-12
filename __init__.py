@@ -16,7 +16,7 @@ bl_info = {
     "author" : "HydraBladeZ",
     "description" : "A tool to import CCS files",
     "blender" : (4, 1, 0),
-    "version" : (1, 0, 5),
+    "version" : (1, 0, 6),
     "location" : "View3D",
     "warning" : "",
     "category" : "Import"
@@ -24,13 +24,10 @@ bl_info = {
 
 import bpy
 
-from . import Panel
 from .importer import *
 
 
 def register():
-    '''bpy.utils.register_class(Panel.CCS_IMPORTER_PT_PANEL)
-    bpy.utils.register_class(Panel.CCS_IMPORTER_OT_IMPORT)'''
     bpy.utils.register_class(CCS_PropertyGroup)
     bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=CCS_PropertyGroup)
     bpy.utils.register_class(CCS_IMPORTER_OT_IMPORT)
@@ -40,9 +37,7 @@ def register():
 
 
 def unregister():
-    '''bpy.utils.unregister_class(Panel.CCS_IMPORTER_PT_PANEL)
-    bpy.utils.unregister_class(Panel.CCS_IMPORTER_OT_IMPORT)
-    bpy.utils.unregister_class(Panel.CCS_PropertyGroup)'''
+    bpy.utils.unregister_class(CCS_PropertyGroup)
     bpy.utils.unregister_class(CCS_IMPORTER_OT_IMPORT)
     bpy.utils.unregister_class(DropCCS)
     bpy.utils.unregister_class(CCS_FH_import)

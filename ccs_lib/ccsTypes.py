@@ -14,7 +14,7 @@ class CCSTypes(Enum):
     MaterialController = 0x0202
     Texture = 0x0300
     Clut = 0x0400
-    Camera = 0x0500
+    Camera = 0x0500 
     CameraFrame = 0x0502
     Light = 0x0600
     AmbientFrame = 0x0601
@@ -48,6 +48,7 @@ class CCSTypes(Enum):
     ShadowFrame = 0x1801
     Morpher = 0x1900
     MorpherFrame = 0x1901
+    MorphController = 0x1902
     StreamOutlineParam = 0x1a00
     StreamCelShaderParam = 0x1b00
     CelShadeFrame = 0x1b01
