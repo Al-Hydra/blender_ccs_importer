@@ -346,18 +346,18 @@ class ccsModel(BrStruct):
                     rigidmesh = br.read_struct(RigidMesh, None, False, self.vertexScale, self.modelFlags, version)
                     self.meshes.append(rigidmesh)
     
-    def finalize(self, chunks):        
-        if self.modelType & ModelTypes.Deformable:
+    def finalize(self, chunks):
+        if self.modelType & ModelTypes.Unk:
+                self.lookupList = self.clump.boneIndices
+                self.lookupNames = [chunks[i].name for i in self.lookupList]
+        
+        elif self.modelType & ModelTypes.Deformable:
             if self.clump and self.lookupList:
                 self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
                 self.lookupNames = [chunks[i].name for i in self.lookupList]
             else:
                 self.lookupList = self.clump.boneIndices
                 self.lookupNames = [chunks[i].name for i in self.lookupList]
-        
-        elif self.modelType & ModelTypes.Unk:
-            self.lookupList = self.clump.boneIndices
-            self.lookupNames = [chunks[i].name for i in self.lookupList]
         
         for mesh in self.meshes:
             if mesh:

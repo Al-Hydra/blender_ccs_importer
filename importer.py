@@ -157,52 +157,62 @@ class importCCS:
                 
 
                 elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
-                    for i, mesh in enumerate(model.meshes[0:-1]):
-                        meshdata = bpy.data.meshes.new(f'{model.name}_{i}')
-                        obj = bpy.data.objects.new(f'{model.name}_{i}', meshdata)
+                    #Create the object and its mesh data
+                    meshdata = bpy.data.meshes.new(f'{model.name}')
+                    obj = bpy.data.objects.new(f'{model.name}', meshdata)
+                    
+                    #find the armature and add all the bones to a dict
+                    armature = bpy.data.objects.get(model.clump.name)
+                    bone_indices = {}
+                    for i in range(len(armature.pose.bones)):
+                        obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                        bone_indices[armature.pose.bones[i].name] = i
+                    
+                    normals = []
 
-                        meshdata = self.makeMeshSingleWeight(meshdata, mesh)
+                    if len(model.lookupList) > 1:
+                        meshRange = model.meshes[0:-1]
+                    else:
+                        meshRange = model.meshes
+
+                    for i, mesh in enumerate(meshRange):
+                        parent = armature.pose.bones.get(model.lookupNames[mesh.parentIndex])
+                        
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
-                        obj.data.materials.append(mat)
-                        
-                        if model.clump:
-                            clump = bpy.data.objects.get(model.clump.name)
-                            parent = clump.pose.bones.get(model.lookupNames[mesh.parentIndex])
-                            obj.parent = clump
-                            if parent:
-                                meshdata.transform(parent.matrix)
+                        mat_slot = obj.material_slots.get(mat.name)
+                        if mat_slot:
+                            matIndex = mat_slot.slot_index
+                        else:
+                            obj.data.materials.append(mat)
+                            mat_slot = obj.material_slots.get(mat.name)
+                            matIndex = mat_slot.slot_index
 
-                                vertex_group = obj.vertex_groups.new(name = parent.name)
-                                vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
-                                obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                                obj.modifiers['Armature'].object = clump
-                        
-                        collection.objects.link(obj)
+                        meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)                        
                     
-                    mesh = model.meshes[-1]
-                    meshdata = bpy.data.meshes.new(f'{model.name}_deformable')
-                    obj = bpy.data.objects.new(f'{model.name}_deformable', meshdata)
-
-                    bone_indices = {}
-                    parent_clump = bpy.data.objects.get(model.clump.name)
-                    for i in range(len(parent_clump.pose.bones)):
-                        obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                        bone_indices[parent_clump.pose.bones[i].name] = i
+                    #deformable mesh
+                    if len(model.lookupList) > 1:
+                        mesh = model.meshes[-1]
+                        #add the mesh material
+                        mat = self.makeMaterial(model, mesh)
+                        mat_slot = obj.material_slots.get(mat.name)
+                        if mat_slot:
+                            matIndex = mat_slot.slot_index
+                        else:
+                            obj.data.materials.append(mat)
+                            mat_slot = obj.material_slots.get(mat.name)
+                            matIndex = mat_slot.slot_index
                     
-                    obj.parent = parent_clump
+                        meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals)
 
-                    meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices)
-
-                    #add the mesh material
-                    mat = self.makeMaterial(model, mesh)
-                    obj.data.materials.append(mat)           
-                    
-                    collection.objects.link(bpy.data.objects[f'{model.name}_deformable'])
+                    #meshdata.normals_split_custom_set_from_vertices(normals)
+      
+                    collection.objects.link(obj)
+                    obj.parent = armature
 
                     #add armature modifier
-                    armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
-                    armature_modifier.object = parent_clump
+                    armature_modifier = obj.modifiers.new(name = f'{armature.name}', type = 'ARMATURE')
+                    armature_modifier.object = armature
 
                 elif model.meshCount > 0 and model.modelType & 2:
                         for mesh in model.meshes:
@@ -237,28 +247,37 @@ class importCCS:
                 else:
                     #single bone
                     if model.meshCount > 0 and model.modelType < 2:
+                        #Create the object and its mesh data
+                        meshdata = bpy.data.meshes.new(f'{model.name}')
+                        obj = bpy.data.objects.new(f'{model.name}', meshdata)
+                        
+                        #find the armature and add all the bones to a dict
+                        armature = bpy.data.objects.get(model.clump.name)
+                        parent = armature.pose.bones.get(model.parentBone.name)
+                        bone_indices = {}
+                        for i in range(len(armature.pose.bones)):
+                            obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                            bone_indices[armature.pose.bones[i].name] = i
+                        
+                        normals = []
+
                         for m, mesh in enumerate(model.meshes):
-                            meshdata = bpy.data.meshes.new(f'{model.name}')
-                            obj = bpy.data.objects.new(f'{model.name}', meshdata)
-
-                            meshdata = self.makeMeshSingleWeight(meshdata, mesh)
-
                             #add the mesh material
                             mat = self.makeMaterial(model, mesh)
-                            obj.data.materials.append(mat)
+                            mat_slot = obj.material_slots.get(mat.name)
+                            if mat_slot:
+                                matIndex = mat_slot.slot_index
+                            else:
+                                obj.data.materials.append(mat)
+                                mat_slot = obj.material_slots.get(mat.name)
+                                matIndex = mat_slot.slot_index
+                            
+                            meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)
 
-                            if model.clump:
-                                clump = bpy.data.objects.get(model.clump.name)
-                                parent = clump.pose.bones.get(model.parentBone.name)
-                                if parent:
-                                    meshdata.transform(parent.matrix)
+                        obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                        obj.modifiers['Armature'].object = armature
 
-                                vertex_group = obj.vertex_groups.new(name = parent.name)
-                                vertex_group.add(range(mesh.vertexCount), 1, 'ADD')
-                                obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                                obj.modifiers['Armature'].object = clump
-
-                                obj.parent = clump
+                        obj.parent = armature
 
                         collection.objects.link(obj)
         
@@ -470,18 +489,21 @@ class importCCS:
         return mat
 
 
-    def makeMeshSingleWeight(self, meshdata, mesh):
+    def makeMeshSingleWeight(self, meshdata, mesh, parent, boneIndices, matIndex, normals):
             bm = bmesh.new()
 
             uv_layer = bm.loops.layers.uv.new(f"UV")
             color_layer = bm.loops.layers.color.new(f"Color")
+            vgroup_layer = bm.verts.layers.deform.new("Weights")
 
-            normals = []
+            boneID = boneIndices[parent.name]
 
             #Triangles
             direction = 1
             for i, v in enumerate(mesh.vertices):
                 bmVertex = bm.verts.new(v.position)
+
+                bmVertex[vgroup_layer][boneID] = 1
                 
                 #normals must be normalized
                 normals_vector = np.array(v.normal)
@@ -504,6 +526,8 @@ class importCCS:
                         face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
                     elif direction == -1:
                         face = bm.faces.new((bm.verts[i], bm.verts[i-1], bm.verts[i-2]))
+                    
+                    face.material_index = matIndex
                     face.smooth = True
                     for loop in face.loops:
                         loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
@@ -514,9 +538,11 @@ class importCCS:
             
             bm.faces.ensure_lookup_table()
 
-            bm.to_mesh(meshdata)
+            bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
 
-            meshdata.normals_split_custom_set_from_vertices(normals)
+            bm.transform(parent.matrix)
+            bm.from_mesh(meshdata)
+            bm.to_mesh(meshdata)
 
             return meshdata
         
@@ -593,14 +619,10 @@ class importCCS:
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
     
-    def makeMeshMultiWeight(self, meshdata, model, mesh, bone_indices):        
+    def makeMeshMultiWeight(self, meshdata, model, mesh, bone_indices, matIndex, normals):        
         bm = bmesh.new()
         vgroup_layer = bm.verts.layers.deform.new("Weights")
-        uv_layer = bm.loops.layers.uv.new(f"UV")
-        #color_layer = bm.loops.layers.color.new(f"Color")
-
-        normals = []
-        
+        uv_layer = bm.loops.layers.uv.new(f"UV")        
 
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position
@@ -653,6 +675,7 @@ class importCCS:
                     face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
                 elif direction == -1:
                     face = bm.faces.new((bm.verts[i], bm.verts[i-1], bm.verts[i-2]))
+                face.material_index = matIndex
                 face.smooth = True
                 for loop in face.loops:
                     loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
@@ -661,12 +684,10 @@ class importCCS:
                 direction *= -1
         
         #clean up the mesh
-        #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.00001)
-        #make sure that all the normals are pointing the right way
-        #bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
 
+        bm.from_mesh(meshdata)
         bm.to_mesh(meshdata)
-        #meshdata.normals_split_custom_set_from_vertices(normals)
 
         return meshdata
     
@@ -722,4 +743,4 @@ class importCCS:
 
 def menu_func_import(self, context):
     self.layout.operator(CCS_IMPORTER_OT_IMPORT.bl_idname,
-                         text='CyberConnect Streaming File (.ccs)')
+                        text='CyberConnect Streaming File (.ccs)')

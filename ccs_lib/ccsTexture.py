@@ -41,11 +41,11 @@ class ccsTexture(BrStruct):
         self.width = br.read_uint8()
         self.height = br.read_uint8()
         self.unk2 = br.read_uint16()
-        if version < 0x120:
+        '''if version < 0x120:
             self.width = 1 << self.width
             self.height = 1 << self.height
-            self.unk3 = br.read_uint32()
-        elif self.width == 0xff or self.height == 0xff:
+            self.unk3 = br.read_uint32()'''
+        if self.width == 0xff or self.height == 0xff:
             self.width = br.read_uint16()
             self.height = br.read_uint16()
             self.unk3 = br.read_uint16()
