@@ -85,6 +85,25 @@ def BGRA_to_RGBA(data: bytes) -> bytes:
     return bytes(new_data)
 
 
+def rgbaToTGA(width,height,textureData):
+    tga = TGA()
+
+    tga.ImageID = ""
+    tga.ColorMapType = 1
+    tga.DataTypeCode = DataTypes.UNCOMPRESSED_TRUE_COLOR.value
+    tga.ColorMapOrigin = 0
+    tga.ColorMapLength = 0
+    tga.ColorMapDepth = 0
+    tga.x_Origin = 0
+    tga.y_Origin = 0
+    tga.Width = width
+    tga.Height = height
+    tga.BitsPerPixel = 8
+    tga.ImageDescriptor = 0
+    tga.PaletteData = []
+    tga.ImageData = bytes(textureData)
+
+
 def indexed8ToTGA(width, height, indices, colorPalette):
     tga = TGA()
 
@@ -135,15 +154,4 @@ def indexed4ToTGA(width, height, indices, colorPalette):
         br.write_struct(tga)
 
         return br.buffer()
-
-
-
-if __name__ == "__main__":
-    path = r"D:\SteamLibrary\steamapps\common\Obscure\data\_common\textures\b1bonus3.tga"
-    with open(path, "rb") as f:
-        filebytes = f.read()
-    
-    br = BinaryReader(filebytes, Endian.LITTLE, "cp932")
-    tga = br.read_struct(TGA)
-    print(tga.Width)
 

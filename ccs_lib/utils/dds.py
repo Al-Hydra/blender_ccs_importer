@@ -1,6 +1,6 @@
 from enum import IntEnum, IntFlag
 
-from utils.PyBinaryReader.binary_reader import *
+from .PyBinaryReader.binary_reader import *
 
 
 class DDS(BrStruct):

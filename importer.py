@@ -444,12 +444,12 @@ class importCCS:
             tex = mesh.material.texture
             if tex:
                 img = None
-                image = tex.convertToTGA()
+                image = tex.convertTexture()
 
                 if image:
                     if hasattr(tex, "name"):
                         img = bpy.data.images.get(tex.name)    
-                    if not img:
+                    if not img: 
                         img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
                         img.pack(data=bytes(image), data_len=len(image))
                         img.source = 'FILE'
