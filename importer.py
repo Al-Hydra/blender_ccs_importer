@@ -176,7 +176,7 @@ class importCCS:
                         meshRange = model.meshes
 
                     for i, mesh in enumerate(meshRange):
-                        parent = armature.pose.bones.get(model.lookupNames[mesh.parentIndex])
+                        parent = armature.data.bones.get(model.lookupNames[mesh.parentIndex])
                         
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
@@ -253,7 +253,7 @@ class importCCS:
                         
                         #find the armature and add all the bones to a dict
                         armature = bpy.data.objects.get(model.clump.name)
-                        parent = armature.pose.bones.get(model.parentBone.name)
+                        parent = armature.data.bones.get(model.parentBone.name)
                         bone_indices = {}
                         for i in range(len(armature.pose.bones)):
                             obj.vertex_groups.new(name = armature.pose.bones[i].name)
@@ -311,9 +311,19 @@ class importCCS:
                         continue
                     
                     armatureObj = bpy.data.objects.get(armature.name)
+                    clump = None
+                    
+                    if ccsAnmObj.type == "ExternalObject":
+                        if ccsAnmObj.object:
+                            clump = ccsAnmObj.object.clump
 
-                    for b in armatureObj.data.bones:
-                        matrix_dict[b.name] = b.matrix_local
+                            for b in clump.bones.values():
+                                matrix_dict[b.name] = b.matrix
+                    
+                    if not clump:
+                        for b in armatureObj.data.bones:
+                            matrix_dict[b.name] = b.matrix_local
+                    
 
                     posebone = armatureObj.pose.bones.get(bone.name)
 
@@ -383,9 +393,6 @@ class importCCS:
 
                     #rotations Quaternion
                     frames = [x for x in objCtrl.rotationsQuat.keys()]
-
-                    '''if len(objCtrl.rotationsQuat[0]) < 4:
-                        raise ValueError'''
 
                     if (bone.parent != None):
                         values = self.convert_anm_values_tranformed("rotation_quaternion", [objCtrl.rotationsQuat[x] for x in objCtrl.rotationsQuat.keys()], loc, rot, sca, rotate_vector, bone_parent)
@@ -541,7 +548,7 @@ class importCCS:
 
             bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
 
-            bm.transform(parent.matrix)
+            bm.transform(Matrix(parent["matrix"]))
             bm.from_mesh(meshdata)
             bm.to_mesh(meshdata)
 

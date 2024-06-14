@@ -43,9 +43,9 @@ class ccsExternalObject(BrStruct):
         self.name = ''
         self.path = ''
         self.type = "ExternalObject"
-        self.parentIndex = 0
-        self.objectIndex = 0
+        self.object = None
         self.model = None
+        self.clump = None
 
     def __br_read__(self, br: BinaryReader, indexTable):
         self.index = br.read_uint32()
