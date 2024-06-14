@@ -19,9 +19,9 @@ class ccsAnimation(BrStruct):
         currentFrame = 0
         while not currentFrame < 0:
             #read chunk type
-            #print(self.name)
+            print(self.name)
             chunkType = CCSTypes(br.read_uint16())
-            #print(chunkType)
+            print(chunkType)
             br.seek(2, 1)
             chunkSize = br.read_uint32()
             if chunkType == CCSTypes.Frame:

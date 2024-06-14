@@ -298,6 +298,7 @@ class importCCS:
 
                 matrix_dict = {}
                 for objCtrl in anim.objectControllers:
+                    bone = None
                     ccsAnmObj = ccsf.chunks[objCtrl.objectIndex]
                     for armature in bpy.data.armatures:
                         bone = armature.bones.get(ccsAnmObj.name)

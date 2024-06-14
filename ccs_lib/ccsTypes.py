@@ -16,6 +16,7 @@ class CCSTypes(Enum):
     Clut = 0x0400
     Camera = 0x0500 
     CameraFrame = 0x0502
+    CameraController = 0x503
     Light = 0x0600
     AmbientFrame = 0x0601
     DistantLightFrame = 0x0602
