@@ -385,11 +385,16 @@ class importCCS:
                     
                     #Rotations Euler
                     rotations = {}
+                    startQuat = brot
                     for frame, rot in objCtrl.rotationsEuler.items():
-                        #endQuat = brot
+                        
+                        endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
 
-                        rotation = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
-                        rotations[frame] = rotation
+                        if startQuat.dot(endQuat) < 0:
+                            endQuat.negate()
+                        
+                        rotations[frame] = endQuat
+                        startQuat = endQuat
 
                     data_path = f'{bone_path}.{"rotation_quaternion"}'
                     if len(rotations):
@@ -411,34 +416,13 @@ class importCCS:
                             quat = q
                             q = og_rot.conjugated().copy()
 
-                            if not bone.parent:
-                                q.rotate(Quaternion((rotation[3] , *rotation[:3])).conjugated())
-                            else:
-                                q.rotate(Quaternion((rotation[3], *rotation[:3])))
+                            q.rotate(Quaternion((rotation[3], *rotation[:3])))
                             quat.rotate(q.conjugated())
 
-                            '''print(og_rot)
-                            print(og_rot.conjugated())
-
-                            rotation_inverse = Quaternion(og_rot.conjugated())
-                            rotation_inverse_rotated = rotation_inverse.rotate(og_rot)
-                            print(og_rot)
-                            print(rotation_inverse.rotate(og_rot))
-
-
-                            if not bone.parent:
-                                print("triggered")
-                                rotation_inverse.rotate(Quaternion((rotation[3] , *rotation[:3])).conjugated())
-                            else:
-                                rotation_inverse.rotate(Quaternion((rotation[3], *rotation[:3])))
-                            
-                            rotation_inverse_rotated.rotate(rotation_inverse.conjugated())
-
-
-                            rotations_quat[frame] = Quaternion(rotation_inverse_rotated)
+                            rotations_quat[frame] = Quaternion(quat)
                         else:
                             rotation = Quaternion((rot[3], *rot[:3]))
-                            rotations_quat[frame] = rotation'''
+                            rotations_quat[frame] = rotation
 
                     data_path = f'{bone_path}.{"rotation_quaternion"}'
                     if len(rotations_quat):

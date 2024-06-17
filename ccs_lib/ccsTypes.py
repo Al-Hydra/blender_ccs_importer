@@ -64,5 +64,6 @@ class CCSTypes(Enum):
     PCMFrame = 0x2201
     Dynamics = 0x2300
     Binary_Blob = 0x2400
+    SPD = 0x2700
     Frame = 0xff01
     #TopFrame = -0xff
