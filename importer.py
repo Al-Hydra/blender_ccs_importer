@@ -286,7 +286,7 @@ class importCCS:
         for anim in ccsf.chunks.values():
             if anim == None:
                 continue
-            if anim.name.startswith("ANM_"):
+            if anim.name.startswith("ANM_"): #"ANM_1garslc12, ANM_ctu1atc0"
                 action = bpy.data.actions.new(anim.name)
                 #set fps to 30
                 bpy.context.scene.render.fps = 30
@@ -295,10 +295,19 @@ class importCCS:
                 bpy.context.scene.frame_start = 0
                 bpy.context.scene.frame_end = anim.frameCount
 
+                source = "2cmn"
+                target = "2ssk"
+
+                '''for chunk in ccsf.chunks.values():
+                    if chunk != None:
+                        chunk.name = chunk.name.replace(source, target)'''
+
+
 
                 matrix_dict = {}
                 for objCtrl in anim.objectControllers:
                     bone = None
+                    objCtrl: objectController
                     ccsAnmObj = ccsf.chunks[objCtrl.objectIndex]
                     for armature in bpy.data.armatures:
                         bone = armature.bones.get(ccsAnmObj.name)
@@ -322,8 +331,7 @@ class importCCS:
                     
                     if not clump:
                         for b in armatureObj.data.bones:
-                            matrix_dict[b.name] = b.matrix_local
-                    
+                            matrix_dict[b.name] = Matrix(b["matrix"])                    
 
                     posebone = armatureObj.pose.bones.get(bone.name)
 
@@ -331,7 +339,6 @@ class importCCS:
                         continue
 
                     if bone.parent:
-                        #print(bone.parent.name)
                         parent_matrix = matrix_dict.get(bone.parent.name)
                     else:
                         parent_matrix = Matrix.Identity(4)
@@ -339,11 +346,8 @@ class importCCS:
                     mat = matrix_dict.get(bone.name)
                     mat = (parent_matrix.inverted() @ mat)
 
-                    loc, rot, sca = mat.decompose()
-                    rot.invert()
-                    sca = Vector(map(lambda a: 1/a, sca))
-
-                    rotate_vector = bone["original_coords"][1]
+                    bloc, brot, bsca = mat.decompose()
+                    brot.invert()
 
                     group_name = action.groups.new(name = bone.name).name
 
@@ -353,114 +357,97 @@ class importCCS:
                     if bone.parent:
                         bone_parent = True
                     
-                    frames = [x for x in objCtrl.positions.keys()]
 
-                    #positions
-                    if (bone.parent != None):
-                        values = self.convert_anm_values_tranformed("location", [objCtrl.positions[x] for x in objCtrl.positions.keys()], loc, rot, sca, rotate_vector, bone_parent)
-                    else:
-                        values = self.convert_anm_values_tranformed_root("location", [objCtrl.positions[x] for x in objCtrl.positions.keys()], loc, rot, sca)
+                    locations = {}
+                    for frame, loc in objCtrl.positions.items():
 
+                        #positions
+                        if bone.parent != None:
+                            vec_loc = Vector(loc)
+                            vec_loc.rotate(brot)
+                            updated_loc = Vector(bloc)
+                            updated_loc.rotate(brot)
+
+                            final_loc = (vec_loc * 0.01) - updated_loc
+                        else:
+                            final_loc = Vector(loc) * 0.01
+
+                        locations[frame] = final_loc
+                    
                     data_path = f'{bone_path}.{"location"}'
-                    if len(values):
-                        for i in range(len(values[0])):
+                    if len(locations):
+                        for i in range(3):
                             fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                            fc.keyframe_points.add(len(frames))
-                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), frames, values)) for x in co])
+                            fc.keyframe_points.add(len(objCtrl.positions.keys()))
+                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), objCtrl.positions.keys(), locations.values())) for x in co])
 
                             fc.update()
-
                     
-                    
-                    #rotations euler
-                    frames = [x for x in objCtrl.rotationsEuler.keys()]
+                    #Rotations Euler
+                    rotations = {}
+                    for frame, rot in objCtrl.rotationsEuler.items():
+                        #endQuat = brot
 
-                    if (bone.parent != None):
-                        values = self.convert_anm_values_tranformed("rotation_euler", [objCtrl.rotationsEuler[x] for x in objCtrl.rotationsEuler.keys()], loc, rot, sca, rotate_vector, bone_parent)
-                    else:
-                        values = self.convert_anm_values_tranformed_root("rotation_euler", [objCtrl.rotationsEuler[x] for x in objCtrl.rotationsEuler.keys()], loc, rot, sca)
+                        rotation = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
+                        rotations[frame] = rotation
 
                     data_path = f'{bone_path}.{"rotation_quaternion"}'
-
-                    if len(values):
-                        for i in range(len(values[0])):
+                    if len(rotations):
+                        for i in range(4):
                             fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                            fc.keyframe_points.add(len(frames))
-                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), frames, values)) for x in co])
+                            fc.keyframe_points.add(len(rotations.keys()))
+                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
 
                             fc.update()
-                    
 
-                    #rotations Quaternion
-                    frames = [x for x in objCtrl.rotationsQuat.keys()]
 
-                    if (bone.parent != None):
-                        values = self.convert_anm_values_tranformed("rotation_quaternion", [objCtrl.rotationsQuat[x] for x in objCtrl.rotationsQuat.keys()], loc, rot, sca, rotate_vector, bone_parent)
-                    else:
-                        values = self.convert_anm_values_tranformed_root("rotation_quaternion", [objCtrl.rotationsQuat[x] for x in objCtrl.rotationsQuat.keys()], loc, rot, sca)
+                    #Rotations Quaternion
+                    rotations_quat = {}
+                    for frame, rotation in objCtrl.rotationsQuat.items():
+                        og_rot= Quaternion(brot)
+                        if bone.parent:
+                            q = og_rot.conjugated().copy()
+                            q.rotate(og_rot)
+                            quat = q
+                            q = og_rot.conjugated().copy()
+
+                            if not bone.parent:
+                                q.rotate(Quaternion((rotation[3] , *rotation[:3])).conjugated())
+                            else:
+                                q.rotate(Quaternion((rotation[3], *rotation[:3])))
+                            quat.rotate(q.conjugated())
+
+                            '''print(og_rot)
+                            print(og_rot.conjugated())
+
+                            rotation_inverse = Quaternion(og_rot.conjugated())
+                            rotation_inverse_rotated = rotation_inverse.rotate(og_rot)
+                            print(og_rot)
+                            print(rotation_inverse.rotate(og_rot))
+
+
+                            if not bone.parent:
+                                print("triggered")
+                                rotation_inverse.rotate(Quaternion((rotation[3] , *rotation[:3])).conjugated())
+                            else:
+                                rotation_inverse.rotate(Quaternion((rotation[3], *rotation[:3])))
+                            
+                            rotation_inverse_rotated.rotate(rotation_inverse.conjugated())
+
+
+                            rotations_quat[frame] = Quaternion(rotation_inverse_rotated)
+                        else:
+                            rotation = Quaternion((rot[3], *rot[:3]))
+                            rotations_quat[frame] = rotation'''
 
                     data_path = f'{bone_path}.{"rotation_quaternion"}'
-
-                    if len(values):
-                        for i in range(len(values[0])):
+                    if len(rotations_quat):
+                        for i in range(4):
                             fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                            fc.keyframe_points.add(len(frames))
-                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), frames, values)) for x in co])
+                            fc.keyframe_points.add(len(rotations_quat.keys()))
+                            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations_quat.keys(), rotations_quat.values())) for x in co])
 
                             fc.update()
-
-
-                    '''
-                    for frame in range(anim.frameCount):
-
-                        #get current pose bone translation, rotation and scale
-                        if objCtrl.positions.get(frame):
-                            translation = Vector(objCtrl.positions[frame]) * 0.01
-                        else:
-                            translation = posebone.location
-                        if objCtrl.rotations.get(frame):
-                            rotation = Euler((radians(x) for x in objCtrl.rotations[frame]), 'ZYX')
-                        else:
-                            rotation = posebone.rotation_quaternion
-                        if objCtrl.scales.get(0):
-                            scale = objCtrl.scales[0]
-                        else:
-                            scale = posebone.scale
-
-                        matrix = Matrix.LocRotScale(translation, rotation, scale)
-
-                        posebone.matrix = matrix
-
-                        #posebone.translate(translation)
-                        
-
-                        #set the keyframes
-                        if objCtrl.positions.get(frame):
-                            posebone.keyframe_insert(data_path = 'location', frame = frame, group = group_name)
-                        if objCtrl.rotations.get(frame):
-                            posebone.keyframe_insert(data_path = 'rotation_quaternion', frame = frame, group = group_name)
-                        if objCtrl.scales.get(frame):
-                            posebone.keyframe_insert(data_path = 'scale', frame = frame, group = group_name)
-
-
-'''
-                    '''
-
-                    for frame in objCtrl.positions.keys():
-                        #frame = frame + 1
-                        posebone.location = (Vector(objCtrl.positions[frame]) / 256) * 0.01
-                        posebone.keyframe_insert(data_path = 'location', frame = frame, group = group_name)
-                    
-                    for frame in objCtrl.rotations.keys():
-                        rotaion = (radians(x) for x in objCtrl.rotations[frame])
-                        posebone.rotation_quaternion = Euler(rotaion, 'XYZ').to_quaternion()
-                        posebone.keyframe_insert(data_path = 'rotation_quaternion', frame = frame, group = group_name)
-'''
-                        #posebone.scale = objCtrl.scales[frame]
-                        
-                        #posebone.keyframe_insert(data_path = 'rotation_quaternion', frame = frame, group = group_name)
-                        #posebone.keyframe_insert(data_path = 'scale', frame = frame, group = group_name)
-    
 
     def makeMaterial(self, model, mesh):
         mat = bpy.data.materials.get(f'{model.name}_{mesh.material.name}')
@@ -700,7 +687,7 @@ class importCCS:
         return meshdata
     
 
-    def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, sca: Vector, rotate_vector: Euler, parent: bool):
+    def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, parent: bool):
         if data_path == "location":
             updated_values = list()
             for value_loc in values:
@@ -713,7 +700,7 @@ class importCCS:
             return [((x*0.01) - updated_loc)[:] for x in updated_values]
 
         if data_path == "rotation_euler":
-            return [rot @ Euler((radians(y) for y in x), "ZYX").to_quaternion() for x in values]
+            return [(rot @ ((Euler((radians(y) for y in x), "ZYX").to_quaternion()).to_euler()).to_quaternion())[:] for x in values]
 
         if data_path == "rotation_quaternion":
             quat_list = list()
@@ -737,11 +724,11 @@ class importCCS:
             return [Vector(([abs(y) for y in x]))[:] for x in values]
         return values
 
-    def convert_anm_values_tranformed_root(self, data_path, values, loc: Vector, rot: Quaternion, sca: Vector):
+    def convert_anm_values_tranformed_root(self, data_path, values, loc: Vector, rot: Quaternion):
         if data_path == "location":
             return [loc + Vector((y * 0.01 for y in x)) for x in values]
         if data_path == "rotation_euler":
-            return [Euler((radians(y) for y in x), "ZYX").to_quaternion() for x in values]
+            return [(rot @ ((Euler((radians(y) for y in x), "ZYX").to_quaternion()).to_euler()).to_quaternion())[:] for x in values]
         if data_path == "rotation_quaternion":
             return [Quaternion((x[3], *x[:3])) for x in values]
         if data_path == "scale":

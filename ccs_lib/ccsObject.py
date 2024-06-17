@@ -43,6 +43,7 @@ class ccsExternalObject(BrStruct):
         self.name = ''
         self.path = ''
         self.type = "ExternalObject"
+        self.parent = None
         self.object = None
         self.model = None
         self.clump = None
@@ -56,15 +57,14 @@ class ccsExternalObject(BrStruct):
         self.referencedParentName = indexTable.Names[self.referencedParentIndex]
         self.referencedObjectIndex = br.read_uint32()
         self.referencedObjectName = indexTable.Names[self.referencedObjectIndex]
-
-    def __br_write__(self, br: BinaryReader):
-        br.write_uint32(self.index)
-        br.write_uint32(self.referencedParentIndex)
-        br.write_uint32(self.referencedObjectIndex)
     
     def finalize(self, chunks):
         self.parent = chunks[self.referencedParentIndex]
+        if self.parent:
+            self.parentIndex = self.parent.index
         self.object = chunks[self.referencedObjectIndex]
+        if self.object:
+            self.objectIndex = self.object.index
 
 
 class ccsAnmObject(BrStruct):

@@ -62,21 +62,54 @@ class objectController(BrStruct):
         self.object = chunks[self.objectIndex]
 
 
+'''def readPosition(br: BinaryReader, positions, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 2:
+        frameCount = br.read_uint32()
+
+        frame = br.read_uint32()
+        posX = br.read_float()
+        posY = br.read_float()
+        posZ = br.read_float()
+        positions[frame] = (posX, posY, posZ)
+
+        for i in range(1, frameCount):
+            frame = br.read_uint32()
+            newPosX = br.read_float()
+            delta = newPosX - posX
+            posX = posX + delta
+
+            newPosY = br.read_float()
+            delta = newPosY - posY
+            posY = posY + delta
+            
+            newPosZ = br.read_float()
+            delta = newPosZ - posZ
+            posY = posZ + delta
+
+            positions[frame] = (posX, posY, posZ)
+    
+    elif ctrlFlags & 7 == 1:
+        position = br.read_float(3)
+        positions[currentFrame] = position
+    
+    return positions'''
+
+
 def readPosition(br: BinaryReader, positions, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
 
         frame = br.read_uint32()
-        startPosX = br.read_float()
-        startPosY = br.read_float()
-        startPosZ = br.read_float()
-        positions[frame] = (startPosX, startPosY, startPosZ)
+        posX = br.read_float()
+        posY = br.read_float()
+        posZ = br.read_float()
+        positions[frame] = (posX, posY, posZ)
 
         for i in range(1, frameCount):
             frame = br.read_uint32()
-            posX = br.read_float()# - startPosX
-            posY = br.read_float()# - startPosY
-            posZ = br.read_float()# - startPosZ
+            posX = br.read_float()
+            posY = br.read_float()        
+            posZ = br.read_float()
 
             positions[frame] = (posX, posY, posZ)
     

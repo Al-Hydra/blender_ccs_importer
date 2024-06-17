@@ -47,11 +47,19 @@ class Bone(BrStruct):
     
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
+        bone_obj.finalize(chunks)
+
+        if bone_obj.type == "ExternalObject":
+            if bone_obj.object:
+                bone_obj = bone_obj.object
+                bone_obj.finalize(chunks)
+        
+
         bone_obj.clump = clump
         
-        bone_obj.finalize(chunks)
         self.name = bone_obj.name
         self.object = bone_obj
+        
         if bone_obj.type != "":
             self.parent = bones.get(bone_obj.parentIndex)
         

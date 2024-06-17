@@ -51,12 +51,13 @@ class CCSTypes(Enum):
     MorpherFrame = 0x1901
     MorphController = 0x1902
     StreamOutlineParam = 0x1a00
+    OutlineFrame = 0x1a01
     StreamCelShaderParam = 0x1b00
     CelShadeFrame = 0x1b01
     StreamToneShadeParam = 0x1c00
     ToneShadeFrame = 0x1c01
-    StreamFSBlurParam = 0x1d00
-    FSBlurFrame = 0x1d01
+    StreamFBSBlurParam = 0x1d00
+    FBSBlurFrame = 0x1d01
     Sprite2Tbl = 0x1f00
     AnimationObject = 0x2000
     PCM_Audio = 0x2200
@@ -64,4 +65,4 @@ class CCSTypes(Enum):
     Dynamics = 0x2300
     Binary_Blob = 0x2400
     Frame = 0xff01
-    TopFrame = -0xff
+    #TopFrame = -0xff

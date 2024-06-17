@@ -9,11 +9,12 @@ from .ccsClut import ccsClut
 from .ccsMaterial import ccsMaterial
 from .ccsDummy import ccsDummyPos, ccsDummyPosRot
 from .ccsHit import ccsHit
-from .ccsStream import ccsStream
-from  .ccsBox import ccsBox
+from .ccsStream import *
+from .ccsBox import ccsBox
 from .ccsCamera import ccsCamera
 from .ccsAnimation import ccsAnimation
 from .ccsMorph import ccsMorph
+from .ccsLight import ccsLight
 from cProfile import Profile
 import gzip
 
@@ -83,6 +84,14 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsCamera, None, self.indexTable)
             elif chunkType == CCSTypes.Animation:
                 chunkData = br.read_struct(ccsAnimation, None, self.indexTable, self.version)
+            elif chunkType == CCSTypes.StreamOutlineParam:
+                chunkData = br.read_struct(ccsStreamOutlineParam, None, self.indexTable)
+            elif chunkType == CCSTypes.StreamCelShaderParam:
+                chunkData = br.read_struct(ccsStreamCelShadeParam, None, self.indexTable)
+            elif chunkType == CCSTypes.Light:
+                chunkData = br.read_struct(ccsLight, None, self.indexTable)
+            elif chunkType == CCSTypes.StreamFBSBlurParam:
+                chunkData = br.read_struct(ccsStreamFBSBlurParam, None, self.indexTable)
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize)
