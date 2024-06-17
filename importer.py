@@ -29,6 +29,10 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     filter_glob: StringProperty(default="*.ccs", options={"HIDDEN"})
     filename_ext = ".ccs"
     filepath: StringProperty(subtype='FILE_PATH')
+
+    swap_names: BoolProperty(name = "Swap Character Code", default = False)
+    source_name: StringProperty(name= "Source Name")
+    target_name: StringProperty(name = "Target Name")
     
     def execute(self, context):
 
@@ -38,14 +42,25 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
             
             self.filepath = os.path.join(self.directory, file.name)
 
-            importer = importCCS(self, self.filepath)
+            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)))
 
             importer.read(context)
 
         elapsed_s = "{:.2f}s".format(time() - start_time)
         self.report({'INFO'}, "CCS files imported in " + elapsed_s)
 
-        return {'FINISHED'}        
+        return {'FINISHED'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        row.prop(self, "swap_names")
+        row = layout.row()
+        if self.swap_names:
+            row.prop(self, "source_name")
+            row = layout.row()
+            row.prop(self, "target_name")
 
 
 class DropCCS(Operator):
@@ -87,10 +102,12 @@ class CCS_FH_import(bpy.types.FileHandler):
 
 
 class importCCS:
-    def __init__(self, operator: Operator, filepath, **kwargs):
+    def __init__(self, operator: Operator, filepath, import_settings: dict):
         self.operator = operator
         self.filepath = filepath
-        super().__init__(**kwargs)
+        for key, value in import_settings.items():
+            setattr(self, key, value)
+        
 
     def read(self, context):
         
@@ -295,22 +312,21 @@ class importCCS:
                 bpy.context.scene.frame_start = 0
                 bpy.context.scene.frame_end = anim.frameCount
 
-                source = "2cmn"
-                target = "2ssk"
-
-                '''for chunk in ccsf.chunks.values():
-                    if chunk != None:
-                        chunk.name = chunk.name.replace(source, target)'''
-
-
+                source = self.source_name
+                target = self.target_name
 
                 matrix_dict = {}
                 for objCtrl in anim.objectControllers:
                     bone = None
                     objCtrl: objectController
                     ccsAnmObj = ccsf.chunks[objCtrl.objectIndex]
+                    target_bone = ccsAnmObj.name
+
+                    if ccsAnmObj.name.find(source) != -1:
+                        target_bone = ccsAnmObj.name.replace(source, target)
+
                     for armature in bpy.data.armatures:
-                        bone = armature.bones.get(ccsAnmObj.name)
+                        bone = armature.bones.get(target_bone)
                         if bone:
                             break
                         else:
@@ -322,12 +338,12 @@ class importCCS:
                     armatureObj = bpy.data.objects.get(armature.name)
                     clump = None
                     
-                    if ccsAnmObj.type == "ExternalObject":
+                    '''if ccsAnmObj.type == "ExternalObject":
                         if ccsAnmObj.object:
                             clump = ccsAnmObj.object.clump
 
                             for b in clump.bones.values():
-                                matrix_dict[b.name] = b.matrix
+                                matrix_dict[b.name] = b.matrix'''
                     
                     if not clump:
                         for b in armatureObj.data.bones:
@@ -363,12 +379,12 @@ class importCCS:
 
                         #positions
                         if bone.parent != None:
-                            vec_loc = Vector(loc)
-                            vec_loc.rotate(brot)
-                            updated_loc = Vector(bloc)
-                            updated_loc.rotate(brot)
+                            loc = Vector(loc)
+                            loc.rotate(brot)
+                            bind_loc = Vector(bloc)
+                            bind_loc.rotate(brot)
 
-                            final_loc = (vec_loc * 0.01) - updated_loc
+                            final_loc = (loc * 0.01) - bind_loc
                         else:
                             final_loc = Vector(loc) * 0.01
 
@@ -409,20 +425,20 @@ class importCCS:
                     #Rotations Quaternion
                     rotations_quat = {}
                     for frame, rotation in objCtrl.rotationsQuat.items():
-                        og_rot= Quaternion(brot)
-                        if bone.parent:
-                            q = og_rot.conjugated().copy()
-                            q.rotate(og_rot)
-                            quat = q
-                            q = og_rot.conjugated().copy()
+                        
+                        bind_rotaion = brot.conjugated()
+                        rotation = Quaternion((rotation[3], *rotation[:3]))
 
-                            q.rotate(Quaternion((rotation[3], *rotation[:3])))
-                            quat.rotate(q.conjugated())
+                        #rotate it with the new rotation
+                        bind_rotaion.rotate(rotation)
 
-                            rotations_quat[frame] = Quaternion(quat)
+                        #invert the result
+                        rotations_quat[frame] = Quaternion(bind_rotaion).conjugated()
+                        
+                        '''if bone.parent:
+                            
                         else:
-                            rotation = Quaternion((rot[3], *rot[:3]))
-                            rotations_quat[frame] = rotation
+                            rotations_quat[frame] = rotation'''
 
                     data_path = f'{bone_path}.{"rotation_quaternion"}'
                     if len(rotations_quat):
