@@ -72,6 +72,9 @@ class DropCCS(Operator):
     directory: StringProperty(subtype='DIR_PATH', options={'HIDDEN', 'SKIP_SAVE'})
     filter_glob: StringProperty(default="*.ccs", options={"HIDDEN"})
     index: IntProperty(name="Index")
+    swap_names: BoolProperty(name = "Swap Character Code", default = False)
+    source_name: StringProperty(name= "Source Name")
+    target_name: StringProperty(name = "Target Name")
     
     def execute(self, context):
 
@@ -81,7 +84,7 @@ class DropCCS(Operator):
             
             self.filepath = os.path.join(self.directory, file.name)
 
-            importer = importCCS(self, self.filepath)
+            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)))
 
             importer.read(context)
 
