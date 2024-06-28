@@ -48,7 +48,7 @@ class ccsExternalObject(BrStruct):
         self.model = None
         self.clump = None
 
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
@@ -65,6 +65,7 @@ class ccsExternalObject(BrStruct):
         self.object = chunks[self.referencedObjectIndex]
         if self.object:
             self.objectIndex = self.object.index
+            self.clump = self.object.clump
 
 
 class ccsAnmObject(BrStruct):
@@ -88,8 +89,12 @@ class ccsAnmObject(BrStruct):
         self.shadowIndex = br.read_uint32()
         self.extraIndex = br.read_uint32()
 
+        self.index = 0
+
     def finalize(self, chunks):
+        pass
+        '''self.object = chunks[self.index]
         self.parent = chunks[self.parentIndex]
         self.model = chunks[self.modelIndex]
         self.shadow = chunks[self.layerIndex]
-        self.extra = chunks[self.extraIndex]
+        self.extra = chunks[self.extraIndex]'''

@@ -1,5 +1,4 @@
 from .utils.PyBinaryReader.binary_reader import *
-from .ccsTypes import CCSTypes
 
 class ccsClump(BrStruct):
     def __init__(self):

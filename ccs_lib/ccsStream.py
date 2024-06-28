@@ -1,41 +1,57 @@
 from .utils.PyBinaryReader.binary_reader import *
 from .ccsTypes import CCSTypes
+from .Anms import *
 
 
 class ccsStream(BrStruct):
 
     def __init__(self):
+        self.name = "streamAnimation"
+        self.type = "Stream"
         self.frameCount = 0
         self.chunks = []
+        self.objectControllers = []
+        self.objectFrames = []
 
-    def __br_read__(self, br: BinaryReader):
+    def __br_read__(self, br: BinaryReader, name, ccsChunks, indexTable):
+        self.name = name
+
+
         self.frameCount = br.read_uint32()
         currentFrame = 0
         while currentFrame != -1:
             #read chunk type
             #print(hex(br.pos()))
             chunkType = CCSTypes(br.read_uint16())
+            #print(chunkType)
             br.seek(2, 1)
+            chunkSize = br.read_uint32()
+            
             if chunkType == CCSTypes.Frame:
-                size = br.read_uint32()
                 currentFrame = br.read_int32()
-                continue
-            else:
-                chunkSize = br.read_uint32() * 4
-                chunkData = br.read_bytes(chunkSize)
-                self.chunks.append((chunkType, chunkData))
-        #print(f'frameCount = {self.frameCount}')
+            elif chunkType == CCSTypes.ObjectController:
+                objectCtrl = br.read_struct(objectController, None, currentFrame)
+                self.objectControllers.append(objectCtrl)
 
+            elif chunkType == CCSTypes.ObjectFrame:
+                objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
+                self.objectFrames.append(objF)
+            else:
+                chunkData = br.read_bytes(chunkSize * 4)
+                self.chunks.append((chunkType, chunkData))
+
+        for objf in self.objectFrames:
+            objf.finalize(ccsChunks)
 
 class ccsStreamOutlineParam(BrStruct):
-    def __init__(self) -> None:
+    def __init__(self):
         self.name = ""
         self.type = "StreamOutlineParam"
         self.path = ""
         self.layer = None
         self.object = None
         self.texture = None
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.layer = br.read_uint32()
         self.index = br.read_uint32()
 
@@ -51,14 +67,14 @@ class ccsStreamOutlineParam(BrStruct):
 
 
 class ccsStreamCelShadeParam(BrStruct):
-    def __init__(self) -> None:
+    def __init__(self):
         self.name = ""
         self.type = "StreamCelShadeParam"
         self.path = ""
         self.layer = None
         self.object = None
         self.texture = None
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.unk = br.read_uint32()
         self.index = br.read_uint32()
 
@@ -74,11 +90,11 @@ class ccsStreamCelShadeParam(BrStruct):
 
 
 class ccsStreamFBSBlurParam(BrStruct):
-    def __init__(self) -> None:
+    def __init__(self):
         self.name = ""
         self.type = "StreamFBSBlurParam"
         self.path = ""
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.unk1 = br.read_uint16()
         self.unk2 = br.read_uint16()
         self.index = br.read_uint32()

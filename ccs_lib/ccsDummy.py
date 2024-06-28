@@ -6,7 +6,7 @@ class ccsDummyPos(BrStruct):
         self.path = ''
         self.type = "DummyPos"
         self.position = (0,0,0)
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
@@ -23,7 +23,7 @@ class ccsDummyPosRot(BrStruct):
         self.type = "DummyPosRot"
         self.position = (0,0,0)
         self.rotation = (0,0,0)
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]

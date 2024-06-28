@@ -67,3 +67,5 @@ class CCSTypes(Enum):
     SPD = 0x2700
     Frame = 0xff01
     #TopFrame = -0xff
+
+

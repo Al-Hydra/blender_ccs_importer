@@ -6,7 +6,7 @@ class ccsHit(BrStruct):
         self.type = "Hit"
         self.path = ''
         self.hitMeshes = []
-    def __br_read__(self, br: BinaryReader, indexTable):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]

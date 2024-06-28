@@ -142,29 +142,6 @@ def bmxToDDS(bmx:btxTexture):
         dds.mipmaps = bmx.mipmaps
         dds.texture_data = bmx.textureData
 
-    '''elif bmx.pixel_format in nut_pf_bitmasks.values():
-        header.flags |= 0x8  # DDSD_PITCH
-        header.pitchOrLinearSize = bmx.width * nut_bpp[bmx.pixel_format]
-        header.pixel_format.fourCC = None
-        header.pixel_format.rgbBitCount = nut_bpp[bmx.pixel_format] * 8
-        header.pixel_format.bitmasks = list(nut_pf_bitmasks.keys())[list(
-            nut_pf_bitmasks.values()).index(bmx.pixel_format)]
-        if bmx.pixel_format in (6, 7, 17):
-            header.pixel_format.flags = 0x40 | 0x01  # DDPF_RGB | DDPF_ALPHAPIXELS
-        else:
-            header.pixel_format.flags = 0x40  # DDPF_RGB
-
-        if bmx.pixel_format in (6, 7, 8):
-            dds.mipmaps = bmx.mipmaps
-            texture_data = array('u', bmx.texture_data)
-            texture_data.byteswap()
-            dds.texture_data = texture_data.tobytes()
-        elif bmx.pixel_format in (14, 17):
-            dds.mipmaps = bmx.mipmaps
-            texture_data = array('l', bmx.texture_data)
-            texture_data.byteswap()
-            dds.texture_data = texture_data.tobytes()'''
-
     header.pixel_format.size = 32
     if header.mipMapCount > 1:
         header.flags |= 0x20000  # DDSD_MIPMAPCOUNT
