@@ -28,8 +28,9 @@ from .importer import *
 
 
 def register():
-    bpy.utils.register_class(CCS_PropertyGroup)
-    bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=CCS_PropertyGroup)
+    bpy.utils.register_class(ccsObjectProperties)
+    bpy.utils.register_class(ccsPropertyGroup)
+    bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=ccsPropertyGroup)
     bpy.utils.register_class(CCS_IMPORTER_OT_IMPORT)
     bpy.utils.register_class(DropCCS)
     bpy.utils.register_class(CCS_FH_import)
@@ -37,7 +38,8 @@ def register():
 
 
 def unregister():
-    bpy.utils.unregister_class(CCS_PropertyGroup)
+    bpy.utils.unregister_class(ccsObjectProperties)
+    bpy.utils.unregister_class(ccsPropertyGroup)
     bpy.utils.unregister_class(CCS_IMPORTER_OT_IMPORT)
     bpy.utils.unregister_class(DropCCS)
     bpy.utils.unregister_class(CCS_FH_import)

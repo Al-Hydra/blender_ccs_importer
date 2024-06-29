@@ -48,19 +48,13 @@ class Bone(BrStruct):
         bone_obj = chunks[index]
         bone_obj.finalize(chunks)
 
-        if bone_obj.type == "ExternalObject":
-            if bone_obj.object:
-                bone_obj = bone_obj.object
-                bone_obj.finalize(chunks)
-        
-
         bone_obj.clump = clump
         
         self.name = bone_obj.name
         self.object = bone_obj
         
         if bone_obj.type != "":
-            self.parent = bones.get(bone_obj.parentIndex)
+            self.parent = bones.get(bone_obj.parent.index)
         
             if self.object.model:
                 self.object.model.clump = clump

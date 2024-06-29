@@ -11,6 +11,7 @@ class ccsStream(BrStruct):
         self.frameCount = 0
         self.chunks = []
         self.objectControllers = []
+        self.objects = {}
         self.objectFrames = []
 
     def __br_read__(self, br: BinaryReader, name, ccsChunks, indexTable):
@@ -34,14 +35,19 @@ class ccsStream(BrStruct):
                 self.objectControllers.append(objectCtrl)
 
             elif chunkType == CCSTypes.ObjectFrame:
-                objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
-                self.objectFrames.append(objF)
+                objF: objectFrame = br.read_struct(objectFrame, None, currentFrame, indexTable)
+                obj = self.objects.get(objF.name)
+                if not obj:
+                    self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale)}
+                else:
+                    self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale)
+                #self.objectFrames.append(objF)
             else:
                 chunkData = br.read_bytes(chunkSize * 4)
                 self.chunks.append((chunkType, chunkData))
 
-        for objf in self.objectFrames:
-            objf.finalize(ccsChunks)
+        '''for objf in self.objectFrames:
+            objf.finalize(ccsChunks)'''
 
 class ccsStreamOutlineParam(BrStruct):
     def __init__(self):
@@ -72,6 +78,28 @@ class ccsStreamCelShadeParam(BrStruct):
         self.type = "StreamCelShadeParam"
         self.path = ""
         self.layer = None
+        self.object = None
+        self.texture = None
+    def __br_read__(self, br: BinaryReader, indexTable, version):
+        self.unk = br.read_uint32()
+        self.index = br.read_uint32()
+
+        self.name = indexTable.Names[self.index][0]
+        self.path = indexTable.Names[self.index][1]
+
+        self.objectIndex = br.read_uint32()
+        self.textureIndex = br.read_uint32()
+    
+    def finalize(self, chunks):
+        self.object = chunks[self.objectIndex]
+        self.texture = chunks[self.textureIndex]
+
+
+class ccsStreamToneShadeParam(BrStruct):
+    def __init__(self):
+        self.name = ""
+        self.type = "StreamToneShadeParam"
+        self.path = ""
         self.object = None
         self.texture = None
     def __br_read__(self, br: BinaryReader, indexTable, version):

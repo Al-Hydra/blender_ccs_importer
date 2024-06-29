@@ -11,14 +11,47 @@ from .ccs_lib.ccsAnimation import *
 from .ccs_lib.ccsStream import *
 import os
 
-class CCS_PropertyGroup(bpy.types.PropertyGroup):
-    filepath: StringProperty(
-        name="File Path",
-        description="File Path",
-        default="",
-        maxlen=1024,
-        subtype='FILE_PATH'
+class ccsObjectProperties(bpy.types.PropertyGroup):
+    name: StringProperty(
+        name="",
+        default=""
     ) # type: ignore
+    path: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+    parent: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+    clump: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+    model: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+    shadow: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+    layer: StringProperty(
+        name="",
+        default=""
+    ) # type: ignore
+
+
+class ccsPropertyGroup(bpy.types.PropertyGroup):
+    objects: CollectionProperty(type= ccsObjectProperties) # type: ignore
+    
+    def add_object(self, chunk, clumpName):
+        blenderChunk = bpy.context.scene.ccs_importer.objects.get(chunk.name, self.objects.add())
+        blenderChunk.name = chunk.name
+        blenderChunk.path = chunk.path
+        blenderChunk.parent = chunk.parent.name
+        blenderChunk.clump = clumpName
+
 
 class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     bl_label = "Import CCS"
@@ -279,7 +312,8 @@ class importCCS:
                 action = self.makeAction(anim)
         
         streamChunk: ccsStream = self.ccsf.stream
-        action = self.makeAction(streamChunk)
+        if streamChunk.frameCount > 1:
+            self.makeAction(streamChunk)
 
     def makeMaterial(self, model, mesh):
         mat = bpy.data.materials.get(f'{model.name}_{mesh.material.name}')
@@ -532,22 +566,29 @@ class importCCS:
         bpy.context.view_layer.objects.active = clumpobj
         bpy.ops.object.editmode_toggle()
 
+        importerProp = bpy.context.scene.ccs_importer
+
         for b in cmp.bones.values():
             bone = clump.edit_bones.new(b.name)
+
+            bone_object = b.object
+
+            importerProp.add_object(bone_object, cmp.name)
 
             bone.use_deform = True
             bone.tail = Vector((0, 0.01, 0))
             
-            rotation = (radians(b.rot[0]), radians(b.rot[1]), radians(b.rot[2]))
+            rotation = Euler((radians(x) for x in b.rot), "ZYX").to_quaternion()
 
             if b.parent:
-                b.matrix = b.parent.matrix @ Matrix.LocRotScale(Vector(b.pos) * 0.01, Euler(rotation, 'ZYX'), b.scale)
+                b.matrix = b.parent.matrix @ Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
             else:
-                b.matrix = Matrix.LocRotScale(Vector(b.pos) * 0.01, Euler(rotation, 'ZYX'), b.scale)
+                b.matrix = Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
             
             bone.matrix = b.matrix
             
             bone["original_coords"] = [b.pos, b.rot, b.scale]
+            bone["rotation_quat"] = rotation
             bone["matrix"] = b.matrix
 
             bone.parent = clump.edit_bones[b.parent.name] if b.parent else None
@@ -567,7 +608,6 @@ class importCCS:
         source = self.source_name
         target = self.target_name
 
-        matrix_dict = {}
         for objCtrl in anim.objectControllers:
             objCtrl: objectController
             ccsAnmObj = objCtrl.object
@@ -575,36 +615,31 @@ class importCCS:
 
             if ccsAnmObj.name.find(source) != -1:
                 target_bone = ccsAnmObj.name.replace(source, target)
+            
+            if ccsAnmObj.clump:
+                clump = ccsAnmObj.clump.name
+            else:
+                #try to get it from blender
+                clump = bpy.context.scene.ccs_importer.objects.get(target_bone)
+                if clump:
+                    clump = clump.clump
+                else:
+                    continue
 
-            if ccsAnmObj.type == "AnmObject":
-                breakpoint()
-            
-            if not ccsAnmObj.clump:
-                continue
-            
-            clump = ccsAnmObj.clump
-            armatureObj = bpy.data.objects.get(clump.name)
-            
-            '''if not clump:
-                for b in armatureObj.data.bones:
-                    matrix_dict[b.name] = Matrix(b["matrix"])'''
+            armatureObj = bpy.data.objects.get(clump)
+
+            armatureObj.animation_data_create()
+            armatureObj.animation_data.action = action
 
             posebone = armatureObj.pose.bones.get(target_bone)
+            bone = armatureObj.data.bones.get(posebone.name)
 
             if not posebone:
                 continue
 
-            if posebone.parent:
-                parent_matrix = armatureObj.data.bones.get(posebone.parent.name)["matrix"]
-                parent_matrix = Matrix(parent_matrix)
-            else:
-                parent_matrix = Matrix.Identity(4)
-
-            mat = armatureObj.data.bones.get(posebone.name)["matrix"]
-            mat = (parent_matrix.inverted() @ Matrix(mat))
-
-            bloc, brot, bsca = mat.decompose()
-            brot.invert()
+            bloc = Vector(bone["original_coords"][0]) * 0.01
+            brot = Quaternion(bone["rotation_quat"]).inverted()
+            bscale = Vector(bone["original_coords"][2])
 
             group_name = action.groups.new(name = posebone.name).name
 
@@ -612,19 +647,12 @@ class importCCS:
 
             locations = {}
             for frame, loc in objCtrl.positions.items():
+                loc = Vector(loc) * 0.01
+                bind_loc = Vector(bloc)
+                loc.rotate(brot)
+                bind_loc.rotate(brot)
 
-                #positions
-                if posebone.parent != None:
-                    loc = Vector(loc)
-                    loc.rotate(brot)
-                    bind_loc = Vector(bloc)
-                    bind_loc.rotate(brot)
-
-                    final_loc = (loc * 0.01) - bind_loc
-                else:
-                    final_loc = Vector(loc) * 0.01
-
-                locations[frame] = final_loc
+                locations[frame] = loc - bind_loc
             
             data_path = f'{bone_path}.{"location"}'
             if len(locations):
@@ -657,46 +685,55 @@ class importCCS:
 
                     fc.update()
             
+            #Rotations Quaternion
+            rotations_quat = {}
+            for frame, rotation in objCtrl.rotationsQuat.items():
+                bind_rotaion = brot.conjugated()
+                rotation = Quaternion((rotation[3], *rotation[:3]))
+                #rotate it with the new rotation
+                bind_rotaion.rotate(rotation)
+                #invert the result
+                rotations_quat[frame] = Quaternion(bind_rotaion).conjugated()
+            
+            data_path = f'{bone_path}.{"rotation_quaternion"}'
+            if len(rotations_quat):
+                for i in range(4):
+                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                    fc.keyframe_points.add(len(rotations_quat.keys()))
+                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations_quat.keys(), rotations_quat.values())) for x in co])
+                    fc.update()
+
         
         fcurves = {}
-        for objF in anim.objectFrames:
-            objF: objectFrame
-            ccsAnmObj = objF.object
+        for obj in anim.objects.keys():
 
-            target_bone = ccsAnmObj.name
+            target_bone = obj
 
-            if ccsAnmObj.name.find(source) != -1:
-                target_bone = ccsAnmObj.name.replace(source, target)
+            if obj.find(source) != -1:
+                target_bone = obj.replace(source, target)
 
-            if ccsAnmObj.type == "AnmObject":
-                breakpoint()
-            
-            if not ccsAnmObj.clump:
-                #print(f"no clump found for {ccsAnmObj.name}")
+            #try to get it from blender
+            clump = bpy.context.scene.ccs_importer.objects.get(target_bone)
+            if clump:
+                clump = clump.clump
+            else:
                 continue
-            
-            clump = ccsAnmObj.clump
-            armatureObj = bpy.data.objects.get(clump.name)
+
+            armatureObj = bpy.data.objects.get(clump)
+
+            armatureObj.animation_data_create()
+            armatureObj.animation_data.action = action
 
             posebone = armatureObj.pose.bones.get(target_bone)
-
             if not posebone:
-                #print(f"pose bone not found for {ccsAnmObj.name}")
                 continue
 
-            if posebone.parent:
-                parent_matrix = armatureObj.data.bones.get(posebone.parent.name)["matrix"]
-                parent_matrix = Matrix(parent_matrix)
-            else:
-                parent_matrix = Matrix.Identity(4)
+            bone = armatureObj.data.bones.get(posebone.name)
+            bloc = Vector(bone["original_coords"][0]) * 0.01
+            brot = Quaternion(bone["rotation_quat"]).inverted()
+            bscale = Vector(bone["original_coords"][2])
 
-            mat = armatureObj.data.bones.get(posebone.name)["matrix"]
-            mat = (parent_matrix.inverted() @ Matrix(mat))
-
-            bloc, brot, bsca = mat.decompose()
-            brot.invert()
-
-            group_name = action.groups.new(name = posebone.name).name
+            '''group_name = action.groups.new(name = posebone.name).name
 
             bone_path = f'pose.bones["{posebone.name}"]'
 
@@ -704,17 +741,12 @@ class importCCS:
             loc = objF.position
 
             #positions
-            if posebone.parent != None:
-                loc = Vector(loc)
-                loc.rotate(brot)
-                bind_loc = Vector(bloc)
-                bind_loc.rotate(brot)
+            loc = Vector(loc) * 0.01
+            bind_loc = Vector(bloc)
+            loc.rotate(brot)
+            bind_loc.rotate(brot)
 
-                final_loc = (loc * 0.01) - bind_loc
-            else:
-                final_loc = Vector(loc) * 0.01
-
-            locations[objF.frame] = final_loc
+            locations[objF.frame] = loc - bind_loc
             
             
             data_path = f'{bone_path}.{"location"}'
@@ -722,17 +754,12 @@ class importCCS:
 
                 for frame, value in locations.items():
                     for i in range(3):
-                        fc = fcurves.get(f"{data_path}_{i}")
-                        if not fc:
-                            fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc = fcurves.get(f"{data_path}_{i}", action.fcurves.new(data_path=data_path, index=i, action_group=posebone.name))
+
                         fc.keyframe_points.add(1)
                         fc.keyframe_points.insert(frame,value[i])
                         fcurves[f"{data_path}_{i}"] = fc
                         fc.update()
-                    '''fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
-                    fc.update()
-                    fcurves[f"{data_path}_{i}"] = fc'''
-
             
             #Rotations Euler
             rotations = {}
@@ -749,13 +776,55 @@ class importCCS:
             if len(rotations):
                 for frame, value in rotations.items():
                     for i in range(4):
-                        fc = fcurves.get(f"{data_path}_{i}")
-                        if not fc:
-                            fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc = fcurves.get(f"{data_path}_{i}", action.fcurves.new(data_path=data_path, index=i, action_group=posebone.name))
                         fc.keyframe_points.add(1)
                         fc.keyframe_points.insert(frame,value[i])
                         fcurves[f"{data_path}_{i}"] = fc
-                        fc.update()
+                        fc.update()'''
+
+            group_name = action.groups.new(name = posebone.name).name
+
+            bone_path = f'pose.bones["{group_name}"]'
+
+            locations = {}
+            rotations = {}
+            startQuat = brot
+            for frame, locrotscale in anim.objects[obj].items():
+                loc = locrotscale[0]
+                rot = locrotscale[1]
+
+                loc = Vector(loc) * 0.01
+                bind_loc = Vector(bloc)
+                loc.rotate(brot)
+                bind_loc.rotate(brot)
+
+                locations[frame] = loc - bind_loc
+
+                endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
+
+                if startQuat.dot(endQuat) < 0:
+                    endQuat.negate()
+                
+                rotations[frame] = endQuat
+                startQuat = endQuat
+            
+            data_path = f'{bone_path}.{"location"}'
+            if len(locations):
+                for i in range(3):
+                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                    fc.keyframe_points.add(len(locations.keys()))
+                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
+
+                    fc.update()
+
+            data_path = f'{bone_path}.{"rotation_quaternion"}'
+            if len(rotations):
+                for i in range(4):
+                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                    fc.keyframe_points.add(len(rotations.keys()))
+                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
+
+                    fc.update()
 
     
     def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, parent: bool):

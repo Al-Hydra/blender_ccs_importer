@@ -43,6 +43,7 @@ ccsDict = {
     0x1902: morphController,
     0x1a00: ccsStreamOutlineParam,
     0x1b00: ccsStreamCelShadeParam,
+    0x1c00: ccsStreamToneShadeParam,
     0x1d00: ccsStreamFBSBlurParam,
     0x2000: ccsAnmObject,
     0x2300: ccsDynamics,
@@ -96,9 +97,8 @@ class ccsFile(BrStruct):
             
             #add the chunk to the chunks dict
             self.chunks[chunkData.index] = chunkData
-            
-            #asset = self.indexTable.Names[chunkData.index][1]
-            #self.assets[asset].append(chunkData)
+            asset = self.indexTable.Names[chunkData.index][1]
+            self.assets[asset].append(chunkData)
 
             index += 1
         
@@ -107,8 +107,7 @@ class ccsFile(BrStruct):
 
         #finalize initialization
         for chunk in self.chunks.values():
-            if chunk is not None:
-                chunk.finalize(self.chunks)
+            chunk.finalize(self.chunks)
 
 
 class ccsHeader(BrStruct):
@@ -147,6 +146,7 @@ class ccsChunk(BrStruct):
         self.path = path
         self.object = None
         self.clump = None
+        self.parent = self
     
     def __br_read__(self, br: BinaryReader, indexTable, size, version):
         self.index = br.read_uint32()

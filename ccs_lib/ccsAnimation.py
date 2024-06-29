@@ -11,7 +11,7 @@ class ccsAnimation(BrStruct):
         self.objectControllers = []
         self.morphControllers = []
         self.materialControllers = []
-        self.objectFrames = []
+        self.objects = {}
         
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
@@ -40,7 +40,11 @@ class ccsAnimation(BrStruct):
             
             elif chunkType == CCSTypes.ObjectFrame:
                 objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
-                self.objectFrames.append(objF)
+                obj = self.objects.get(objF.name)
+                if not obj:
+                    self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale)}
+                else:
+                    self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale)
             
             elif chunkType == CCSTypes.MorphController:
                 morphCtrl = br.read_struct(morphController, None, currentFrame)
@@ -58,6 +62,4 @@ class ccsAnimation(BrStruct):
         for objectCtrl in self.objectControllers:
             objectCtrl.finalize(chunks)
         
-        for objFrame in self.objectFrames:
-            objFrame.finalize(chunks)
 

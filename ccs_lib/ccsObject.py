@@ -52,7 +52,7 @@ class ccsExternalObject(BrStruct):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
-
+        
         self.referencedParentIndex = br.read_uint32()
         self.referencedParentName = indexTable.Names[self.referencedParentIndex]
         self.referencedObjectIndex = br.read_uint32()
@@ -65,8 +65,6 @@ class ccsExternalObject(BrStruct):
         self.object = chunks[self.referencedObjectIndex]
         if self.object:
             self.objectIndex = self.object.index
-            self.clump = self.object.clump
-
 
 class ccsAnmObject(BrStruct):
     def __init__(self) -> None:

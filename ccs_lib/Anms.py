@@ -96,7 +96,7 @@ class objectFrame(BrStruct):
     def __init__(self):
         self.frame = 0
         self.object = None
-        self.objectName = ""
+        self.name = ""
         self.position = [0,0,0]
         self.rotation = [0,0,0]
         self.scale = [1,1,1]
@@ -107,7 +107,7 @@ class objectFrame(BrStruct):
         self.objectIndex = br.read_uint32()
         self.ctrlFlags = br.read_uint32()
 
-        self.objectName = indexTable.Names[self.objectIndex][0]
+        self.name = indexTable.Names[self.objectIndex][0]
         
         self.frame = currentFrame
 
