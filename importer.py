@@ -303,6 +303,13 @@ class importCCS:
 
                         self.collection.objects.link(obj)
         
+        for camera in self.ccsf.chunks.values():
+            if camera.type == "Camera":
+                bCamera = bpy.data.cameras.get(camera.name)
+                if not bCamera:
+                    bCamera = bpy.data.cameras.new(camera.name)
+                    cameraObject = bpy.data.objects.new(camera.name, bCamera)
+                    self.collection.objects.link(cameraObject)
 
         #anims
         for anim in self.ccsf.chunks.values():
@@ -790,8 +797,7 @@ class importCCS:
             rotations = {}
             startQuat = brot
             for frame, locrotscale in anim.objects[obj].items():
-                loc = locrotscale[0]
-                rot = locrotscale[1]
+                loc, rot, scale = locrotscale
 
                 loc = Vector(loc) * 0.01
                 bind_loc = Vector(bloc)
@@ -825,6 +831,53 @@ class importCCS:
                     fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
 
                     fc.update()
+        
+        locations = {}
+        rotations = {}
+        fovs = {}
+        for cam in anim.cameras.keys():
+            cameraObject = self.collection.objects.get(cam)
+
+            group_name = action.groups.new(name = cam).name
+
+            if cameraObject:
+                #create a separate action for each camera
+                action = bpy.data.actions.new(f"{anim.name} ({cam})")
+                #apply the animation on the camera
+                cameraObject.animation_data_create()
+                cameraObject.animation_data.action = action
+                for frame, values in anim.cameras[cam].items():
+                    loc, rot, fov = values
+                    locations[frame] = Vector(loc) * 0.01
+                    rotations[frame] = [radians(r) for r in rot]
+                    fovs[frame] = (36) / (math.tan(radians(fov) / 2))
+
+                data_path = f'{"location"}'
+                if len(locations):
+                    for i in range(3):
+                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc.keyframe_points.add(len(locations.keys()))
+                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
+
+                        fc.update()
+                
+                data_path = f'{"rotation_euler"}'
+                if len(rotations):
+                    for i in range(3):
+                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc.keyframe_points.add(len(rotations.keys()))
+                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
+
+                        fc.update()
+                
+
+                data_path = f'{"data.lens"}'
+                if len(rotations):
+                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc.keyframe_points.add(len(fovs.keys()))
+                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v), fovs.keys(), fovs.values())) for x in co])
+
+                        fc.update()
 
     
     def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, parent: bool):

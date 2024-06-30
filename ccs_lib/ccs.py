@@ -1,5 +1,5 @@
 from .utils.PyBinaryReader.binary_reader import *
-from .ccsTypes import CCSTypes
+from .ccsTypes import CCSTypes, ccsDict
 from .ccsClump import ccsClump
 from .ccsDynamics import ccsDynamics
 from .ccsObject import ccsObject, ccsExternalObject, ccsAnmObject
@@ -15,40 +15,11 @@ from .ccsCamera import ccsCamera
 from .ccsAnimation import ccsAnimation
 from .ccsMorph import ccsMorph
 from .ccsLight import ccsLight
-from cProfile import Profile
+from time import perf_counter
+from .Anms import *
 import gzip
 
 
-ccsDict = {
-    0x0005: ccsStream,
-    0x0100: ccsObject,
-    0x0101: objectFrame,
-    0x0102: objectController,
-    0x0200: ccsMaterial,
-    0x0202: materialController,
-    0x0300: ccsTexture,
-    0x0400: ccsClut,
-    0x0500: ccsCamera,
-    0x0503: cameraController,
-    0x0600: ccsLight,
-    0x0700: ccsAnimation,
-    0x0800: ccsModel,
-    0x0900: ccsClump,
-    0x0a00: ccsExternalObject,
-    0x0b00: ccsHit,
-    0x0c00: ccsBox,
-    0x1300: ccsDummyPos,
-    0x1400: ccsDummyPosRot,
-    0x1900: ccsMorph,
-    0x1902: morphController,
-    0x1a00: ccsStreamOutlineParam,
-    0x1b00: ccsStreamCelShadeParam,
-    0x1c00: ccsStreamToneShadeParam,
-    0x1d00: ccsStreamFBSBlurParam,
-    0x2000: ccsAnmObject,
-    0x2300: ccsDynamics,
-    0xff01: frame,
-}
 
 class ccsFile(BrStruct):
     def __init__(self):
@@ -87,10 +58,10 @@ class ccsFile(BrStruct):
             if chunkType == CCSTypes.Stream:
                 break
             
-            chunk = ccsDict.get(chunkType.value)
+            chunkClass = globals().get(ccsDict.get(chunkType.value), None)
             
-            if chunk:
-                chunkData = br.read_struct(chunk, None, self.indexTable, self.version)
+            if chunkClass:
+                chunkData = br.read_struct(chunkClass, None, self.indexTable, self.version)
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
@@ -164,7 +135,11 @@ def readCCS(filePath):
             print("File is gzipped")
 
     br = BinaryReader(fileBytes, encoding='cp932')
+    start = perf_counter()
+    
     ccs = br.read_struct(ccsFile)
+
+    print(f"read in {perf_counter() - start}")
     return ccs
 
 

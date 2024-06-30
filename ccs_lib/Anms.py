@@ -1,6 +1,54 @@
 from .utils.PyBinaryReader.binary_reader import *
 import struct
+from .ccsTypes import CCSTypes, ccsDict
 
+
+def anmChunkReader(self, br: BinaryReader, indexTable):
+    currentFrame = 0
+    self.cameras = {}
+    while not currentFrame < 0:
+        #read chunk type
+        #print(hex(br.pos()))
+        #print(self.name)
+        chunkType = CCSTypes(br.read_uint16())
+        #print(chunkType)
+        br.seek(2, 1)
+        chunkSize = br.read_uint32()
+        if chunkType == CCSTypes.Frame:
+            currentFrame = br.read_int32()
+            continue
+        
+        elif chunkType == CCSTypes.ObjectController:
+            objectCtrl = br.read_struct(objectController, None, currentFrame)
+            self.objectControllers.append(objectCtrl)
+        
+        elif chunkType == CCSTypes.ObjectFrame:
+            objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
+            obj = self.objects.get(objF.name)
+            if not obj:
+                self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale)}
+            else:
+                self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale)
+        
+        elif chunkType == CCSTypes.CameraFrame:
+            camF = br.read_struct(cameraFrame, None, currentFrame, indexTable)
+            cam = self.cameras.get(camF.name)
+            if not cam:
+                self.cameras[camF.name] = {currentFrame: (camF.position, camF.rotation, camF.fov)}
+            else:
+                self.cameras[camF.name][currentFrame] = (camF.position, camF.rotation, camF.fov)
+        
+        elif chunkType == CCSTypes.MorphController:
+            morphCtrl = br.read_struct(morphController, None, currentFrame)
+            self.morphControllers.append(morphCtrl)
+
+        elif chunkType == CCSTypes.MaterialController:
+            materialCtrl = br.read_struct(materialController, None, currentFrame)
+            self.materialControllers.append(materialCtrl)
+
+        else:
+            chunkData = br.seek(chunkSize * 4, 1)
+            #self.frames.append((chunkType, chunkData))
 
 
 class objectController(BrStruct):
@@ -11,6 +59,7 @@ class objectController(BrStruct):
         self.rotationsQuat = {}
         self.scales = {}
         self.opacity = {}
+        self.frameData = {}
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.objectIndex = br.read_uint32()
         self.ctrlFlags = br.read_uint32()
@@ -74,8 +123,13 @@ class morphController(BrStruct):
         self.morphIndex = br.read_uint32()
         self.ctrlFlags = br.read_uint32()
         self.targetIndex = br.read_uint32()
+        self.unk = br.read_uint32()
 
-        self.morphValues = readFloat(br, self.morphValues, self.ctrlFlags, currentFrame)
+        self.frameCount = br.read_uint32()
+
+        self.morphValues = {br.read_int32() : br.read_float() for i in range(self.frameCount)}
+
+        #self.morphValues = readFloat(br, self.morphValues, self.ctrlFlags, currentFrame)
 
 
     def finalize(self, chunks):
@@ -139,6 +193,46 @@ class objectFrame(BrStruct):
 
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]
+
+
+class cameraFrame(BrStruct):
+    def __init__(self):
+        self.frame = 0
+        self.camera = None
+        self.name = ""
+        self.position = [0,0,0]
+        self.rotation = [0,0,0]
+        self.fov = 45
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.index = br.read_uint32()
+        self.ctrlFlags = br.read_uint32()
+
+        self.name = indexTable.Names[self.index][0]
+        
+        self.frame = currentFrame
+
+        if self.ctrlFlags & 2 == 0:
+            self.position[0] = br.read_float()
+        if self.ctrlFlags & 4 == 0:
+            self.position[1] = br.read_float()
+        if self.ctrlFlags & 8 == 0:
+            self.position[2] = br.read_float()
+        
+        if self.ctrlFlags & 10 == 0:
+            self.rotation[0] = br.read_float()
+        if self.ctrlFlags & 20 == 0:
+            self.rotation[1] = br.read_float()
+        if self.ctrlFlags & 40 == 0:
+            self.rotation[2] = br.read_float()
+
+        if self.ctrlFlags & 80 == 0:
+            self.unk = br.read_float()
+        if self.ctrlFlags & 100 == 0:
+            self.fov = br.read_uint32()
+
+    def finalize(self, chunks):
+        self.camera = chunks[self.index]
 
 
 class shadowFrame(BrStruct):

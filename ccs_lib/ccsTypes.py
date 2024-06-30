@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class CCSTypes(Enum):
     Header = 0x0001
     IndexTable = 0x0002
@@ -66,6 +67,71 @@ class CCSTypes(Enum):
     Binary_Blob = 0x2400
     SPD = 0x2700
     Frame = 0xff01
-    #TopFrame = -0xff
 
-
+ccsDict = {
+    0x0001: "",
+    0x0002: "",
+    0x0003: "",
+    0x0005: "ccsStream",
+    0x0100: "ccsObject",
+    0x0101: "objectFrame",
+    0x0102: "objectController",
+    0x0108: "",
+    0x0200: "ccsMaterial",
+    0x0201: "",
+    0x0202: "materialController",
+    0x0300: "ccsTexture",
+    0x0400: "ccsClut",
+    0x0500: "ccsCamera",
+    0x0502: "",
+    0x0503: "cameraController",
+    0x0600: "ccsLight",
+    0x0601: "",
+    0x0602: "",
+    0x0603: "",
+    0x0604: "",
+    0x0605: "",
+    0x0606: "",
+    0x0607: "",
+    0x0608: "",
+    0x0609: "",
+    0x0700: "ccsAnimation",
+    0x0800: "ccsModel",
+    0x0802: "",
+    0x0803: "",
+    0x0900: "ccsClump",
+    0x0a00: "ccsExternalObject",
+    0x0b00: "ccsHit",
+    0x0c00: "ccsBox",
+    0x0e00: "",
+    0x0d00: "",
+    0x0d80: "",
+    0x0d90: "",
+    0x1000: "",
+    0x1100: "",
+    0x1200: "",
+    0x1300: "ccsDummyPos",
+    0x1400: "ccsDummyPosRot",
+    0x1700: "",
+    0x1800: "",
+    0x1801: "",
+    0x1900: "ccsMorph",
+    0x1901: "",
+    0x1902: "morphController",
+    0x1a00: "ccsStreamOutlineParam",
+    0x1a01: "",
+    0x1b00: "ccsStreamCelShadeParam",
+    0x1b01: "",
+    0x1c00: "ccsStreamToneShadeParam",
+    0x1c01: "",
+    0x1d00: "ccsStreamFBSBlurParam",
+    0x1d01: "",
+    0x1f00: "",
+    0x2000: "ccsAnmObject",
+    0x2200: "",
+    0x2201: "",
+    0x2300: "ccsDynamics",
+    0x2400: "",
+    0x2700: "",
+    0xff01: "frame",
+}

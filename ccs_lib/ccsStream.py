@@ -1,6 +1,6 @@
 from .utils.PyBinaryReader.binary_reader import *
-from .ccsTypes import CCSTypes
-from .Anms import *
+#from .ccsTypes import CCSTypes
+from .Anms import anmChunkReader
 
 
 class ccsStream(BrStruct):
@@ -20,31 +20,7 @@ class ccsStream(BrStruct):
 
         self.frameCount = br.read_uint32()
         currentFrame = 0
-        while currentFrame != -1:
-            #read chunk type
-            #print(hex(br.pos()))
-            chunkType = CCSTypes(br.read_uint16())
-            #print(chunkType)
-            br.seek(2, 1)
-            chunkSize = br.read_uint32()
-            
-            if chunkType == CCSTypes.Frame:
-                currentFrame = br.read_int32()
-            elif chunkType == CCSTypes.ObjectController:
-                objectCtrl = br.read_struct(objectController, None, currentFrame)
-                self.objectControllers.append(objectCtrl)
-
-            elif chunkType == CCSTypes.ObjectFrame:
-                objF: objectFrame = br.read_struct(objectFrame, None, currentFrame, indexTable)
-                obj = self.objects.get(objF.name)
-                if not obj:
-                    self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale)}
-                else:
-                    self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale)
-                #self.objectFrames.append(objF)
-            else:
-                chunkData = br.read_bytes(chunkSize * 4)
-                self.chunks.append((chunkType, chunkData))
+        anmChunkReader(self, br, indexTable)
 
         '''for objf in self.objectFrames:
             objf.finalize(ccsChunks)'''
