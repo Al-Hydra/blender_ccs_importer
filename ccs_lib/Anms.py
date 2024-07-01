@@ -229,7 +229,7 @@ class cameraFrame(BrStruct):
         if self.ctrlFlags & 80 == 0:
             self.unk = br.read_float()
         if self.ctrlFlags & 100 == 0:
-            self.fov = br.read_uint32()
+            self.fov = br.read_float()
 
     def finalize(self, chunks):
         self.camera = chunks[self.index]

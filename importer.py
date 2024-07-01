@@ -637,12 +637,12 @@ class importCCS:
 
             armatureObj.animation_data_create()
             armatureObj.animation_data.action = action
-
             posebone = armatureObj.pose.bones.get(target_bone)
-            bone = armatureObj.data.bones.get(posebone.name)
 
             if not posebone:
-                continue
+                continue    
+
+            bone = armatureObj.data.bones.get(posebone.name)
 
             bloc = Vector(bone["original_coords"][0]) * 0.01
             brot = Quaternion(bone["rotation_quat"]).inverted()
@@ -849,8 +849,8 @@ class importCCS:
                 for frame, values in anim.cameras[cam].items():
                     loc, rot, fov = values
                     locations[frame] = Vector(loc) * 0.01
-                    rotations[frame] = [radians(r) for r in rot]
-                    fovs[frame] = (36) / (math.tan(radians(fov) / 2))
+                    rotations[frame] = [radians(r) for r in rot] #Euler([radians(r) for r in rot], "ZYX")
+                    fovs[frame] = cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))
 
                 data_path = f'{"location"}'
                 if len(locations):
