@@ -10,17 +10,14 @@ class ccsStream(BrStruct):
         self.type = "Stream"
         self.frameCount = 0
         self.chunks = []
-        self.objectControllers = []
-        self.objects = {}
-        self.objectFrames = []
 
-    def __br_read__(self, br: BinaryReader, name, ccsChunks, indexTable):
+    def __br_read__(self, br: BinaryReader, name, ccsChunks, indexTable, version):
         self.name = name
 
 
         self.frameCount = br.read_uint32()
         currentFrame = 0
-        anmChunkReader(self, br, indexTable)
+        anmChunkReader(self, br, indexTable, version)
 
         '''for objf in self.objectFrames:
             objf.finalize(ccsChunks)'''

@@ -163,3 +163,4 @@ cython_debug/
 ccs_lib/modeltest.bin
 ccs_lib/modeltest.json
 ccs_lib/attempt.py
+materials/ccsMaterial.blend1

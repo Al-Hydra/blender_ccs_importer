@@ -9,10 +9,6 @@ class ccsAnimation(BrStruct):
         self.path = ''
         self.loop = False
         self.frameCount = 0
-        self.objectControllers = []
-        self.morphControllers = []
-        self.materialControllers = []
-        self.objects = {}
         
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
@@ -22,7 +18,7 @@ class ccsAnimation(BrStruct):
         self.frameCount = br.read_uint32()
         self.framesSectionSize = br.read_uint32()
 
-        anmChunkReader(self, br, indexTable)
+        anmChunkReader(self, br, indexTable, version)
     
     def finalize(self, chunks):
         for objectCtrl in self.objectControllers:

@@ -74,7 +74,7 @@ class ccsFile(BrStruct):
             index += 1
         
         #read stream section
-        self.stream = br.read_struct(ccsStream, None, self.name, self.chunks, self.indexTable)
+        self.stream = br.read_struct(ccsStream, None, self.name, self.chunks, self.indexTable, self.version)
 
         #finalize initialization
         for chunk in self.chunks.values():

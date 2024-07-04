@@ -323,37 +323,56 @@ class importCCS:
             self.makeAction(streamChunk)
 
     def makeMaterial(self, model, mesh):
-        mat = bpy.data.materials.get(f'{model.name}_{mesh.material.name}')
+        ccs_material = mesh.material
+        mat = bpy.data.materials.get(f'{model.name}_{ccs_material.name}')
         if not mat:
-            mat = bpy.data.materials.new(f'{model.name}_{mesh.material.name}')
-            mat.use_nodes = True
+            
+            ccsMaterial_path = r"materials\ccsMaterial.blend"
+            importer_path = os.path.realpath(__file__)
+            dir_path = os.path.dirname(importer_path)
+
+            ccsMaterial_path = os.path.join(dir_path, ccsMaterial_path)
+
+            #check if ccsMaterial exists already
+            mat = bpy.data.materials.get("ccsMaterial")
+
+            if not mat:
+                with bpy.data.libraries.load(ccsMaterial_path) as (data_from, data_to):
+                    material_name = data_from.materials[1]
+                    data_to.materials = ["ccsMaterial"]
+
+                mat = bpy.data.materials["ccsMaterial"].copy()
+            else:
+                mat = mat.copy()
+            
+            mat.name = f'{model.name}_{ccs_material.name}'
+            
             #add image texture
-            tex = mesh.material.texture
+            tex = ccs_material.texture
+            img = None
             if tex.type == "Texture":
-                img = None
-                image = tex.convertTexture()
-
-                if image:
-                    if hasattr(tex, "name"):
-                        img = bpy.data.images.get(tex.name)    
-                    if not img: 
-                        img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
-                        img.pack(data=bytes(image), data_len=len(image))
-                        img.source = 'FILE'
+                if hasattr(tex, "name"):
+                    img = bpy.data.images.get(tex.name)    
                 
-                #add texture node
-                nodes = mat.node_tree.nodes
-                links = mat.node_tree.links
-                tex_node = nodes.new('ShaderNodeTexImage')
-                tex_node.image = img
-                tex_node.location = (-200, 200)
-                #link texture node to principled node
-                links.new(tex_node.outputs['Color'], nodes['Principled BSDF'].inputs['Base Color'])
-                links.new(tex_node.outputs['Alpha'], nodes['Principled BSDF'].inputs['Alpha'])
+                if not img:
+                    texture = tex.convertTexture()
 
-                mat.blend_method = 'CLIP'
-                mat.shadow_method = 'NONE'
-                mat.show_transparent_back = False
+                    if texture:
+                            img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                            img.pack(data=bytes(texture), data_len=len(texture))
+                            img.source = 'FILE'
+                
+                texture_node = mat.node_tree.nodes["ccsTexture"]
+                texture_node.image = img
+
+                '''ccsShader_node = mat.node_tree.nodes["ccsShader"]
+                ccsShader_node.inputs["X Offset"].default_value = ccs_material.offsetX
+                ccsShader_node.inputs["Y Offset"].default_value = ccs_material.offsetY
+                ccsShader_node.inputs["X Scale"].default_value = ccs_material.scaleX
+                ccsShader_node.inputs["Y Scale"].default_value = ccs_material.scaleY'''
+
+                mat["coords"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+            
         return mat
 
 
@@ -610,7 +629,7 @@ class importCCS:
 
         #adjust the timeline
         bpy.context.scene.frame_start = 0
-        bpy.context.scene.frame_end = anim.frameCount
+        bpy.context.scene.frame_end = anim.frameCount - 1
 
         source = self.source_name
         target = self.target_name
@@ -795,6 +814,7 @@ class importCCS:
 
             locations = {}
             rotations = {}
+            scales = {}
             startQuat = brot
             for frame, locrotscale in anim.objects[obj].items():
                 loc, rot, scale = locrotscale
@@ -813,7 +833,9 @@ class importCCS:
                 
                 rotations[frame] = endQuat
                 startQuat = endQuat
-            
+
+                scales[frame] = Vector(scale) * bscale
+                
             data_path = f'{bone_path}.{"location"}'
             if len(locations):
                 for i in range(3):
@@ -831,10 +853,17 @@ class importCCS:
                     fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
 
                     fc.update()
+            
+            data_path = f'{bone_path}.{"scale"}'
+            if len(scales):
+                for i in range(3):
+                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                    fc.keyframe_points.add(len(scales.keys()))
+                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), scales.keys(), scales.values())) for x in co])
+
+                    fc.update()
         
-        locations = {}
-        rotations = {}
-        fovs = {}
+
         for cam in anim.cameras.keys():
             cameraObject = self.collection.objects.get(cam)
 
@@ -842,20 +871,24 @@ class importCCS:
 
             if cameraObject:
                 #create a separate action for each camera
-                action = bpy.data.actions.new(f"{anim.name} ({cam})")
+                camera_action = bpy.data.actions.new(f"{anim.name} ({cam})")
                 #apply the animation on the camera
                 cameraObject.animation_data_create()
-                cameraObject.animation_data.action = action
+                cameraObject.animation_data.action = camera_action
+
+                locations = {}
+                rotations = {}
+                fovs = {}
                 for frame, values in anim.cameras[cam].items():
                     loc, rot, fov = values
                     locations[frame] = Vector(loc) * 0.01
-                    rotations[frame] = [radians(r) for r in rot] #Euler([radians(r) for r in rot], "ZYX")
+                    rotations[frame] = [radians(r) for r in rot] 
                     fovs[frame] = cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))
 
                 data_path = f'{"location"}'
                 if len(locations):
                     for i in range(3):
-                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc = camera_action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
                         fc.keyframe_points.add(len(locations.keys()))
                         fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
 
@@ -864,7 +897,7 @@ class importCCS:
                 data_path = f'{"rotation_euler"}'
                 if len(rotations):
                     for i in range(3):
-                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                        fc = camera_action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
                         fc.keyframe_points.add(len(rotations.keys()))
                         fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
 
@@ -872,14 +905,101 @@ class importCCS:
                 
 
                 data_path = f'{"data.lens"}'
-                if len(rotations):
-                        fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                if len(fovs):
+                        fc = camera_action.fcurves.new(data_path=data_path, index=0, action_group=group_name)
                         fc.keyframe_points.add(len(fovs.keys()))
                         fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v), fovs.keys(), fovs.values())) for x in co])
 
                         fc.update()
 
-    
+        for mat in anim.materialControllers:
+            bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
+            blender_mat = bmats[0]
+            group_name = blender_mat.name
+
+            blender_mat.animation_data_create()
+            blender_mat.node_tree.animation_data_create()
+
+            ccsShader = blender_mat.node_tree.nodes["ccsShader"]
+
+            offsetX_value = blender_mat["coords"][0]
+            offsetY_value = blender_mat["coords"][1]
+            scaleX_value = blender_mat["coords"][2]
+            scaleY_value = blender_mat["coords"][3]
+            
+            for ofsX in mat.offsetX.keys():
+                ccsShader.inputs["X Offset"].default_value = offsetX_value + mat.offsetX[ofsX]
+                ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= ofsX)
+            
+            for ofsY in mat.offsetY.keys():
+                ccsShader.inputs["Y Offset"].default_value = offsetY_value + mat.offsetY[ofsY]
+                ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= ofsY)
+            
+            for sclX in mat.scaleX.keys():
+                ccsShader.inputs["X Scale"].default_value = scaleX_value + mat.scaleX[sclX]
+                ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= sclX)
+            
+            for sclY in mat.scaleY.keys():
+                ccsShader.inputs["Y Scale"].default_value = scaleY_value + mat.scaleY[sclY]
+                ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)
+            
+            material_action = blender_mat.node_tree.animation_data.action
+
+            if material_action:
+                material_action.name = f"{action.name} ({mat.name})"
+                for fcurve in material_action.fcurves:
+                    for keyframe in fcurve.keyframe_points:
+                        keyframe.interpolation = 'LINEAR'
+        
+        
+        for mat in anim.materials.keys():
+            bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
+            if bmats:
+                blender_mat = bmats[0]
+                group_name = blender_mat.name
+
+                blender_mat.animation_data_create()
+                blender_mat.node_tree.animation_data_create()
+
+                ccsShader = blender_mat.node_tree.nodes["ccsShader"]
+
+                offsetX_value = blender_mat["coords"][0]
+                offsetY_value = blender_mat["coords"][1]
+                scaleX_value = blender_mat["coords"][2]
+                scaleY_value = blender_mat["coords"][3]
+
+
+                for frame, values in anim.materials[mat].items():
+                    ccsShader.inputs["X Offset"].default_value = offsetX_value + values[0]
+                    ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= frame)
+
+                    ccsShader.inputs["Y Offset"].default_value = offsetY_value + values[1]
+                    ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= frame)
+
+                    ccsShader.inputs["X Scale"].default_value = scaleX_value + values[2]
+                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= frame)
+
+                    ccsShader.inputs["Y Scale"].default_value = scaleY_value + values[3]
+                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= frame)
+
+                
+                material_action = blender_mat.node_tree.animation_data.action
+
+                if material_action:
+                    material_action.name = f"{action.name} ({mat})"
+                    for fcurve in material_action.fcurves:
+                        for keyframe in fcurve.keyframe_points:
+                            keyframe.interpolation = 'LINEAR'
+
+
+
+    def insert_anm_values_float(self, action, group_name, data_path, values, values_count):
+        if len(values):
+            fc = action.fcurves.new(data_path=data_path, index=0, action_group=group_name)
+            fc.keyframe_points.add(len(values.keys()))
+            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v), values.keys(), values.values())) for x in co])
+            fc.update()
+        
     def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, parent: bool):
         if data_path == "location":
             updated_values = list()

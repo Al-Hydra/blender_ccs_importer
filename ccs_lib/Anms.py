@@ -3,9 +3,14 @@ import struct
 from .ccsTypes import CCSTypes, ccsDict
 
 
-def anmChunkReader(self, br: BinaryReader, indexTable):
+def anmChunkReader(self, br: BinaryReader, indexTable, version):
     currentFrame = 0
     self.cameras = {}
+    self.objectControllers = []
+    self.morphControllers = []
+    self.materialControllers = []
+    self.objects = {}
+    self.materials = {}
     while not currentFrame < 0:
         #read chunk type
         #print(hex(br.pos()))
@@ -43,8 +48,16 @@ def anmChunkReader(self, br: BinaryReader, indexTable):
             self.morphControllers.append(morphCtrl)
 
         elif chunkType == CCSTypes.MaterialController:
-            materialCtrl = br.read_struct(materialController, None, currentFrame)
+            materialCtrl = br.read_struct(materialController, None, currentFrame, indexTable)
             self.materialControllers.append(materialCtrl)
+        
+        elif chunkType == CCSTypes.MaterialFrame:
+            materialF = br.read_struct(materialFrame, None, currentFrame, indexTable, version)
+            material = self.materials.get(materialF.name)
+            if not material:
+                self.materials[materialF.name] = {currentFrame: (materialF.offsetX, materialF.offsetY, materialF.scaleX, materialF.scaleY)}
+            else:
+                self.materials[materialF.name][currentFrame] = (materialF.offsetX, materialF.offsetY, materialF.scaleX, materialF.scaleY)
 
         else:
             chunkData = br.seek(chunkSize * 4, 1)
@@ -100,8 +113,9 @@ class materialController(BrStruct):
         self.scaleX = {}
         self.scaleY = {}
 
-    def __br_read__(self, br: BinaryReader, currentFrame):
-        self.materialIndex = br.read_uint32()
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
         self.ctrlFlags = br.read_uint32()
 
         self.offsetX = readFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
@@ -110,7 +124,49 @@ class materialController(BrStruct):
         self.scaleY = readFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
     
     def finalize(self, chunks):
-        self.material = chunks[self.materialIndex]
+        self.material = chunks[self.index]
+
+
+class materialFrame(BrStruct):
+    def __init__(self):
+        self.material = None
+        self.frame = 0
+        self.offsetX = 0
+        self.offsetY = 0
+        self.scaleX = 0
+        self.scaleY = 0
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable, version):
+        self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
+        self.ctrlFlags = br.read_uint32()
+
+        self.frame = currentFrame
+
+        if version > 0x120:
+
+            if self.ctrlFlags & 2 == 0:
+                self.offsetX = br.read_float()
+            if self.ctrlFlags & 4 == 0:
+                self.offsetY = br.read_float()
+            if self.ctrlFlags & 8 == 0:
+                self.scaleX = br.read_float()
+            if self.ctrlFlags & 10 == 0:
+                self.scaleY = br.read_float()
+            if self.ctrlFlags & 20 == 0:
+                self.unk1 = br.read_float()
+            if self.ctrlFlags & 40 == 0:
+                self.unk2 = br.read_float()
+        
+        else:
+            if self.ctrlFlags & 2 == 0:
+                self.offsetX = br.read_float()
+            if self.ctrlFlags & 4 == 0:
+                self.offsetY = br.read_float()
+
+    
+    def finalize(self, chunks):
+        self.material = chunks[self.index]
 
 
 class morphController(BrStruct):
@@ -276,10 +332,11 @@ class distantLightFrame(BrStruct):
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
+        vectorFrames = {br.read_int32(): br.read_float(3) for i in range(frameCount)}
 
-        for i in range(frameCount):
+        '''for i in range(frameCount):
             frame = br.read_uint32()
-            vectorFrames[frame] = br.read_float(3)
+            vectorFrames[frame] = br.read_float(3)'''
     
     elif ctrlFlags & 7 == 1:
         position = br.read_float(3)
@@ -291,10 +348,11 @@ def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
 def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
+        rotationFrames = {br.read_int32(): br.read_float(3) for i in range(frameCount)}
 
-        for i in range(frameCount):
+        '''for i in range(frameCount):
             frame = br.read_uint32()
-            rotationFrames[frame] = br.read_float(3)
+            rotationFrames[frame] = br.read_float(3)'''
     
     elif ctrlFlags & 7 == 1:
         rotationFrames[currentFrame] = br.read_float(3)
@@ -305,9 +363,10 @@ def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
 def readRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 4:
         frameCount = br.read_uint32()
-        for i in range(frameCount):
+        rotationFrames = {br.read_int32(): br.read_float(4) for i in range(frameCount)}
+        '''for i in range(frameCount):
             frame = br.read_uint32()
-            rotationFrames[frame] = br.read_float(4)
+            rotationFrames[frame] = br.read_float(4)'''
     
     return rotationFrames
 
@@ -316,9 +375,11 @@ def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
 
-        for i in range(frameCount):
+        floatFrames = {br.read_int32(): br.read_float() for i in range(frameCount)}
+
+        '''for i in range(frameCount):
             frame = br.read_uint32()
-            floatFrames[frame] = br.read_float()
+            floatFrames[frame] = br.read_float()'''
     
     elif ctrlFlags & 7 == 1:
         floatFrames[currentFrame] =  br.read_float()
