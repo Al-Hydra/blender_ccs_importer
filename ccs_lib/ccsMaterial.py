@@ -22,10 +22,10 @@ class ccsMaterial(BrStruct):
             self.offsetX = br.read_float()
             self.offsetY = br.read_float()
         elif version <= 0x123 and version > 0x120:
-            self.scaleX = br.read_int16() / 4096
-            self.scaleY = br.read_int16() / 4096
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
+            self.scaleX = br.read_int16() / 4096
+            self.scaleY = br.read_int16() / 4096
         else:
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096

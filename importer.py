@@ -326,17 +326,17 @@ class importCCS:
         ccs_material = mesh.material
         mat = bpy.data.materials.get(f'{model.name}_{ccs_material.name}')
         if not mat:
-            
-            ccsMaterial_path = r"materials\ccsMaterial.blend"
-            importer_path = os.path.realpath(__file__)
-            dir_path = os.path.dirname(importer_path)
-
-            ccsMaterial_path = os.path.join(dir_path, ccsMaterial_path)
-
             #check if ccsMaterial exists already
             mat = bpy.data.materials.get("ccsMaterial")
+            
 
             if not mat:
+                ccsMaterial_path = r"materials\ccsMaterial.blend"
+                importer_path = os.path.realpath(__file__)
+                dir_path = os.path.dirname(importer_path)
+
+                ccsMaterial_path = os.path.join(dir_path, ccsMaterial_path)
+                
                 with bpy.data.libraries.load(ccsMaterial_path) as (data_from, data_to):
                     material_name = data_from.materials[1]
                     data_to.materials = ["ccsMaterial"]
@@ -372,6 +372,8 @@ class importCCS:
                 ccsShader_node.inputs["Y Scale"].default_value = ccs_material.scaleY'''
 
                 mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+        else:
+            mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
             
         return mat
 
@@ -914,42 +916,43 @@ class importCCS:
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
-            blender_mat = bmats[0]
-            group_name = blender_mat.name
+            if bmats:
+                blender_mat = bmats[0]
+                group_name = blender_mat.name
 
-            blender_mat.animation_data_create()
-            blender_mat.node_tree.animation_data_create()
+                blender_mat.animation_data_create()
+                blender_mat.node_tree.animation_data_create()
 
-            ccsShader = blender_mat.node_tree.nodes["ccsShader"]
+                ccsShader = blender_mat.node_tree.nodes["ccsShader"]
 
-            offsetX_value = blender_mat["uvOffset"][0]
-            offsetY_value = blender_mat["uvOffset"][1]
-            scaleX_value = blender_mat["uvOffset"][2]
-            scaleY_value = blender_mat["uvOffset"][3]
-            
-            for ofsX in mat.offsetX.keys():
-                ccsShader.inputs["X Offset"].default_value = offsetX_value + mat.offsetX[ofsX]
-                ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= ofsX)
-            
-            for ofsY in mat.offsetY.keys():
-                ccsShader.inputs["Y Offset"].default_value = offsetY_value + mat.offsetY[ofsY]
-                ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= ofsY)
-            
-            for sclX in mat.scaleX.keys():
-                ccsShader.inputs["X Scale"].default_value = scaleX_value + mat.scaleX[sclX]
-                ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= sclX)
-            
-            for sclY in mat.scaleY.keys():
-                ccsShader.inputs["Y Scale"].default_value = scaleY_value + mat.scaleY[sclY]
-                ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)
-            
-            material_action = blender_mat.node_tree.animation_data.action
+                offsetX_value = blender_mat["uvOffset"][0]
+                offsetY_value = blender_mat["uvOffset"][1]
+                scaleX_value = blender_mat["uvOffset"][2]
+                scaleY_value = blender_mat["uvOffset"][3]
+                
+                for ofsX in mat.offsetX.keys():
+                    ccsShader.inputs["X Offset"].default_value = mat.offsetX[ofsX] - offsetX_value
+                    ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= ofsX)
+                
+                for ofsY in mat.offsetY.keys():
+                    ccsShader.inputs["Y Offset"].default_value = mat.offsetY[ofsY] - offsetY_value 
+                    ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= ofsY)
+                
+                for sclX in mat.scaleX.keys():
+                    ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] - scaleX_value 
+                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= sclX)
+                
+                for sclY in mat.scaleY.keys():
+                    ccsShader.inputs["Y Scale"].default_value = mat.scaleY[sclY] - scaleY_value 
+                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)
+                
+                material_action = blender_mat.node_tree.animation_data.action
 
-            if material_action:
-                material_action.name = f"{action.name} ({mat.name})"
-                for fcurve in material_action.fcurves:
-                    for keyframe in fcurve.keyframe_points:
-                        keyframe.interpolation = 'LINEAR'
+                if material_action:
+                    material_action.name = f"{action.name} ({mat.name})"
+                    for fcurve in material_action.fcurves:
+                        for keyframe in fcurve.keyframe_points:
+                            keyframe.interpolation = 'LINEAR'
         
         
         for mat in anim.materials.keys():
@@ -970,16 +973,23 @@ class importCCS:
 
 
                 for frame, values in anim.materials[mat].items():
-                    ccsShader.inputs["X Offset"].default_value = offsetX_value + values[0]
+                    ccsShader.inputs["X Offset"].default_value = values[0] - offsetX_value
                     ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= frame)
 
-                    ccsShader.inputs["Y Offset"].default_value = offsetY_value + values[1]
+                    ccsShader.inputs["Y Offset"].default_value = values[1] - offsetY_value 
                     ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= frame)
 
-                    ccsShader.inputs["X Scale"].default_value = scaleX_value + values[2]
+                if values[2] == 1:
+                    ccsShader.inputs["X Scale"].default_value = 1
                     ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= frame)
-
-                    ccsShader.inputs["Y Scale"].default_value = scaleY_value + values[3]
+                else:
+                    ccsShader.inputs["X Scale"].default_value = 1 + values[2] - scaleX_value
+                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= frame)
+                if values[3] == 1:
+                    ccsShader.inputs["Y Scale"].default_value = 1
+                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= frame)
+                else:
+                    ccsShader.inputs["Y Scale"].default_value = 1 + values[3] - scaleY_value
                     ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= frame)
 
                 
