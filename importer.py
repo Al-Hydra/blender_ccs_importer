@@ -371,7 +371,7 @@ class importCCS:
                 ccsShader_node.inputs["X Scale"].default_value = ccs_material.scaleX
                 ccsShader_node.inputs["Y Scale"].default_value = ccs_material.scaleY'''
 
-                mat["coords"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+                mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
             
         return mat
 
@@ -922,10 +922,10 @@ class importCCS:
 
             ccsShader = blender_mat.node_tree.nodes["ccsShader"]
 
-            offsetX_value = blender_mat["coords"][0]
-            offsetY_value = blender_mat["coords"][1]
-            scaleX_value = blender_mat["coords"][2]
-            scaleY_value = blender_mat["coords"][3]
+            offsetX_value = blender_mat["uvOffset"][0]
+            offsetY_value = blender_mat["uvOffset"][1]
+            scaleX_value = blender_mat["uvOffset"][2]
+            scaleY_value = blender_mat["uvOffset"][3]
             
             for ofsX in mat.offsetX.keys():
                 ccsShader.inputs["X Offset"].default_value = offsetX_value + mat.offsetX[ofsX]
@@ -963,10 +963,10 @@ class importCCS:
 
                 ccsShader = blender_mat.node_tree.nodes["ccsShader"]
 
-                offsetX_value = blender_mat["coords"][0]
-                offsetY_value = blender_mat["coords"][1]
-                scaleX_value = blender_mat["coords"][2]
-                scaleY_value = blender_mat["coords"][3]
+                offsetX_value = blender_mat["uvOffset"][0]
+                offsetY_value = blender_mat["uvOffset"][1]
+                scaleX_value = blender_mat["uvOffset"][2]
+                scaleY_value = blender_mat["uvOffset"][3]
 
 
                 for frame, values in anim.materials[mat].items():
