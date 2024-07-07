@@ -4,16 +4,18 @@ from .utils.PyBinaryReader.binary_reader import *
 class ccsDynamics(BrStruct):
 
     def __init__(self):
+        self.type = "Dynamics"
         self.springBones = []
         self.collisions = []
 
-    def __br_read__(self, br: BinaryReader, version):
+    def __br_read__(self, br: BinaryReader, indexTable, version):
         self.clumpIndex = br.read_uint32()
+        self.index = f"{self.clumpIndex}_Dynamics"
         self.springBonesCount = br.read_uint16()
         self.collisionsCount = br.read_uint16()
 
         self.springBones = [br.read_struct(springBone) for i in range(self.springBonesCount)]
-        self.collisions = [br.read_struct(Collision) for i in range(self.collisionsCount)]
+        self.collisions = [br.read_struct(collision) for i in range(self.collisionsCount)]
 
     def finalize(self, chunks):
         self.clump = chunks[self.clumpIndex]
@@ -30,7 +32,7 @@ class springBone(BrStruct):
         self.params = br.read_float(3)
 
 
-class Collision(BrStruct):
+class collision(BrStruct):
 
     def __init__(self):
         self.boneIndex = 0

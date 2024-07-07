@@ -68,8 +68,8 @@ class ccsFile(BrStruct):
             
             #add the chunk to the chunks dict
             self.chunks[chunkData.index] = chunkData
-            asset = self.indexTable.Names[chunkData.index][1]
-            self.assets[asset].append(chunkData)
+            '''asset = self.indexTable.Names[chunkData.index][1]
+            self.assets[asset].append(chunkData)'''
 
             index += 1
         

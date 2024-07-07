@@ -315,7 +315,7 @@ class importCCS:
         for anim in self.ccsf.chunks.values():
             if anim == None:
                 continue
-            if anim.name.startswith("ANM_"): #"ANM_1garslc12, ANM_ctu1atc0"
+            if anim.type == "Animation": #"ANM_1garslc12, ANM_ctu1atc0"
                 action = self.makeAction(anim)
         
         streamChunk: ccsStream = self.ccsf.stream
@@ -472,9 +472,9 @@ class importCCS:
 
             bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
-            #normals_vector = np.array(vn1 + vn2)
+            #normals_vector = np.array(vn1 + vn 2)
             #normals_vector = normals_vector / np.linalg.norm(normals_vector)
-            #normals.append(normals_vector)   
+            normals.append(vn1)   
 
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
