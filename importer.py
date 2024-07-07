@@ -447,25 +447,34 @@ class importCCS:
             #calculate vertex final position
             boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
             boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
+            boneID3 = model.lookupList[ccsVertex.boneIDs[2]]
+            boneID4 = model.lookupList[ccsVertex.boneIDs[3]]
 
             vertex_matrix1 = model.clump.bones[boneID1].matrix
             vertex_matrix2 = model.clump.bones[boneID2].matrix
+            vertex_matrix3 = model.clump.bones[boneID3].matrix
+            vertex_matrix4 = model.clump.bones[boneID4].matrix
+
             vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
             vn1 = Vector(ccsVertex.normals[0])
 
-            if ccsVertex.boneIDs[1] != "":
-                vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
-                vn2 = Vector(ccsVertex.normals[1])
-            else:
-                vp2 = Vector((0,0,0))
-                vn2 = Vector((0,0,0))
+            vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
+            vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
+            vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
+
+            #if ccsVertex.boneIDs[1] != "":
+                #vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
+                #vn2 = Vector(ccsVertex.normals[1])
+            #else:
+            #vp2 = Vector((0,0,0))
+            #vn2 = Vector((0,0,0))
             
 
-            bmVertex = bm.verts.new(vp1 + vp2)
+            bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
-            normals_vector = np.array(vn1 + vn2)
-            normals_vector = normals_vector / np.linalg.norm(normals_vector)
-            normals.append(normals_vector)   
+            #normals_vector = np.array(vn1 + vn2)
+            #normals_vector = normals_vector / np.linalg.norm(normals_vector)
+            #normals.append(normals_vector)   
 
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
@@ -479,6 +488,8 @@ class importCCS:
             else:
                 bmVertex[vgroup_layer][boneID1] = ccsVertex.weights[0]
                 bmVertex[vgroup_layer][boneID2] = ccsVertex.weights[1]
+                bmVertex[vgroup_layer][boneID3] = ccsVertex.weights[2]
+                bmVertex[vgroup_layer][boneID4] = ccsVertex.weights[3]
 
             
         for i in range(len(mesh.triangleIndices)):
@@ -517,26 +528,36 @@ class importCCS:
             #calculate vertex final position
             boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
             boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
+            boneID3 = model.lookupList[ccsVertex.boneIDs[2]]
+            boneID4 = model.lookupList[ccsVertex.boneIDs[3]]
 
             vertex_matrix1 = model.clump.bones[boneID1].matrix
             vertex_matrix2 = model.clump.bones[boneID2].matrix
-            vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0])
+            vertex_matrix3 = model.clump.bones[boneID3].matrix
+            vertex_matrix4 = model.clump.bones[boneID4].matrix
+
+            vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
             vn1 = Vector(ccsVertex.normals[0])
 
-            if ccsVertex.boneIDs[1] != "":
+            vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
+            vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
+            vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
+
+
+            '''if ccsVertex.boneIDs[1] != "":
                 vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
                 vn2 = Vector(ccsVertex.normals[1])
             else:
                 vp2 = Vector((0,0,0))
-                vn2 = Vector((0,0,0))
+                vn2 = Vector((0,0,0))'''
             
 
-            bmVertex = bm.verts.new(vp1 + vp2)
+            bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
             #normals must be normalized
-            normals_vector = np.array(vn1 + vn2)
+            '''normals_vector = np.array(vn1 + vn2)
             normals_vector = normals_vector / np.linalg.norm(normals_vector)
-            normals.append(normals_vector)
+            normals.append(normals_vector)'''
             
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
@@ -545,12 +566,18 @@ class importCCS:
             #add vertex groups with 0 weights
             boneID1 = bone_indices[model.lookupNames[ccsVertex.boneIDs[0]]]
             boneID2 = bone_indices[model.lookupNames[ccsVertex.boneIDs[1]]]
+            boneID3 = bone_indices[model.lookupNames[ccsVertex.boneIDs[2]]]
+            boneID4 = bone_indices[model.lookupNames[ccsVertex.boneIDs[3]]]
+            
             bmVertex[vgroup_layer][boneID1] = 0
             bmVertex[vgroup_layer][boneID2] = 0
+            bmVertex[vgroup_layer][boneID3] = 0
+            bmVertex[vgroup_layer][boneID4] = 0
 
-            #this is done in case a vertex uses the same bone twice
             bmVertex[vgroup_layer][boneID1] += ccsVertex.weights[0]
             bmVertex[vgroup_layer][boneID2] += ccsVertex.weights[1]
+            bmVertex[vgroup_layer][boneID3] += ccsVertex.weights[2]
+            bmVertex[vgroup_layer][boneID4] += ccsVertex.weights[3]
 
             flag = ccsVertex.triangleFlag
             
