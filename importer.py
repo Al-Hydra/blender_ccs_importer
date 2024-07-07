@@ -350,17 +350,15 @@ class importCCS:
             #add image texture
             tex = ccs_material.texture
             img = None
-            if tex.type == "Texture":
-                if hasattr(tex, "name"):
-                    img = bpy.data.images.get(tex.name)    
+            if hasattr(tex, "name"):
+                img = bpy.data.images.get(tex.name)    
                 
-                if not img:
+                if not img and tex.type == 'Texture':
                     texture = tex.convertTexture()
 
-                    if texture:
-                            img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
-                            img.pack(data=bytes(texture), data_len=len(texture))
-                            img.source = 'FILE'
+                    img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                    img.pack(data=bytes(texture), data_len=len(texture))
+                    img.source = 'FILE'
                 
                 texture_node = mat.node_tree.nodes["ccsTexture"]
                 texture_node.image = img
@@ -700,66 +698,26 @@ class importCCS:
 
             bone_path = f'pose.bones["{group_name}"]'
 
-            locations = {}
-            for frame, loc in objCtrl.positions.items():
-                loc = Vector(loc) * 0.01
-                bind_loc = Vector(bloc)
-                loc.rotate(brot)
-                bind_loc.rotate(brot)
 
-                locations[frame] = loc - bind_loc
-            
+            locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot)
             data_path = f'{bone_path}.{"location"}'
-            if len(locations):
-                for i in range(3):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(objCtrl.positions.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), objCtrl.positions.keys(), locations.values())) for x in co])
-
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, locations, 3)
             
             #Rotations Euler
-            rotations = {}
-            startQuat = brot
-            for frame, rot in objCtrl.rotationsEuler.items():
-                
-                endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
-
-                if startQuat.dot(endQuat) < 0:
-                    endQuat.negate()
-                
-                rotations[frame] = endQuat
-                startQuat = endQuat
-
+            rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot)
             data_path = f'{bone_path}.{"rotation_quaternion"}'
-            if len(rotations):
-                for i in range(4):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(rotations.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
-
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, rotations, 4)
             
             #Rotations Quaternion
-            rotations_quat = {}
-            for frame, rotation in objCtrl.rotationsQuat.items():
-                bind_rotaion = brot.conjugated()
-                rotation = Quaternion((rotation[3], *rotation[:3]))
-                #rotate it with the new rotation
-                bind_rotaion.rotate(rotation)
-                #invert the result
-                rotations_quat[frame] = Quaternion(bind_rotaion).conjugated()
+            rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
             
             data_path = f'{bone_path}.{"rotation_quaternion"}'
-            if len(rotations_quat):
-                for i in range(4):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(rotations_quat.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations_quat.keys(), rotations_quat.values())) for x in co])
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, rotations_quat, 4)
 
+            scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
+            data_path = f'{bone_path}.{"scale"}'
+            self.insertFrames(action, group_name, data_path, scales, 3)
         
-        fcurves = {}
         for obj in anim.objects.keys():
 
             target_bone = obj
@@ -787,55 +745,6 @@ class importCCS:
             bloc = Vector(bone["original_coords"][0]) * 0.01
             brot = Quaternion(bone["rotation_quat"]).inverted()
             bscale = Vector(bone["original_coords"][2])
-
-            '''group_name = action.groups.new(name = posebone.name).name
-
-            bone_path = f'pose.bones["{posebone.name}"]'
-
-            locations = {}
-            loc = objF.position
-
-            #positions
-            loc = Vector(loc) * 0.01
-            bind_loc = Vector(bloc)
-            loc.rotate(brot)
-            bind_loc.rotate(brot)
-
-            locations[objF.frame] = loc - bind_loc
-            
-            
-            data_path = f'{bone_path}.{"location"}'
-            if len(locations):
-
-                for frame, value in locations.items():
-                    for i in range(3):
-                        fc = fcurves.get(f"{data_path}_{i}", action.fcurves.new(data_path=data_path, index=i, action_group=posebone.name))
-
-                        fc.keyframe_points.add(1)
-                        fc.keyframe_points.insert(frame,value[i])
-                        fcurves[f"{data_path}_{i}"] = fc
-                        fc.update()
-            
-            #Rotations Euler
-            rotations = {}
-            rot = objF.rotation
-            startQuat = brot
-            endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
-
-            if startQuat.dot(endQuat) < 0:
-                endQuat.negate()
-            
-            rotations[objF.frame] = endQuat
-
-            data_path = f'{bone_path}.{"rotation_quaternion"}'
-            if len(rotations):
-                for frame, value in rotations.items():
-                    for i in range(4):
-                        fc = fcurves.get(f"{data_path}_{i}", action.fcurves.new(data_path=data_path, index=i, action_group=posebone.name))
-                        fc.keyframe_points.add(1)
-                        fc.keyframe_points.insert(frame,value[i])
-                        fcurves[f"{data_path}_{i}"] = fc
-                        fc.update()'''
 
             group_name = action.groups.new(name = posebone.name).name
 
@@ -866,31 +775,13 @@ class importCCS:
                 scales[frame] = Vector(scale) * bscale
                 
             data_path = f'{bone_path}.{"location"}'
-            if len(locations):
-                for i in range(3):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(locations.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
-
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, locations, 3)
 
             data_path = f'{bone_path}.{"rotation_quaternion"}'
-            if len(rotations):
-                for i in range(4):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(rotations.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
-
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, rotations, 4)
             
             data_path = f'{bone_path}.{"scale"}'
-            if len(scales):
-                for i in range(3):
-                    fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                    fc.keyframe_points.add(len(scales.keys()))
-                    fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), scales.keys(), scales.values())) for x in co])
-
-                    fc.update()
+            self.insertFrames(action, group_name, data_path, scales, 3)
         
 
         for cam in anim.cameras.keys():
@@ -915,31 +806,13 @@ class importCCS:
                     fovs[frame] = cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))
 
                 data_path = f'{"location"}'
-                if len(locations):
-                    for i in range(3):
-                        fc = camera_action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                        fc.keyframe_points.add(len(locations.keys()))
-                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), locations.keys(), locations.values())) for x in co])
-
-                        fc.update()
+                self.insertFrames(camera_action, group_name, data_path, locations, 3)
                 
                 data_path = f'{"rotation_euler"}'
-                if len(rotations):
-                    for i in range(3):
-                        fc = camera_action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
-                        fc.keyframe_points.add(len(rotations.keys()))
-                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), rotations.keys(), rotations.values())) for x in co])
-
-                        fc.update()
+                self.insertFrames(camera_action, group_name, data_path, rotations, 3)
                 
-
                 data_path = f'{"data.lens"}'
-                if len(fovs):
-                        fc = camera_action.fcurves.new(data_path=data_path, index=0, action_group=group_name)
-                        fc.keyframe_points.add(len(fovs.keys()))
-                        fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v), fovs.keys(), fovs.values())) for x in co])
-
-                        fc.update()
+                self.insertFrames(camera_action, group_name, data_path, fov, 1)
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
@@ -1029,63 +902,63 @@ class importCCS:
                             keyframe.interpolation = 'LINEAR'
 
 
+    def convertEulerRotation(self, keyframes, brot):
+        #Rotations Euler
+        rotations = {}
+        startQuat = brot
+        for frame, rot in keyframes:
+            
+            endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
 
-    def insert_anm_values_float(self, action, group_name, data_path, values, values_count):
-        if len(values):
-            fc = action.fcurves.new(data_path=data_path, index=0, action_group=group_name)
-            fc.keyframe_points.add(len(values.keys()))
-            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v), values.keys(), values.values())) for x in co])
-            fc.update()
+            if startQuat.dot(endQuat) < 0:
+                endQuat.negate()
+            
+            rotations[frame] = endQuat
+            startQuat = endQuat
         
-    def convert_anm_values_tranformed(self, data_path, values, loc: Vector, rot: Quaternion, parent: bool):
-        if data_path == "location":
-            updated_values = list()
-            for value_loc in values:
-                vec_loc = Vector([value_loc[0],value_loc[1],value_loc[2]])
-                vec_loc.rotate(rot)
-                updated_values.append(vec_loc)
-            updated_loc = loc
-            updated_loc.rotate(rot)
+        return rotations
+    
 
-            return [((x*0.01) - updated_loc)[:] for x in updated_values]
-
-        if data_path == "rotation_euler":
-            return [(rot @ ((Euler((radians(y) for y in x), "ZYX").to_quaternion()).to_euler()).to_quaternion())[:] for x in values]
-
-        if data_path == "rotation_quaternion":
-            quat_list = list()
-            for rotation in values:
-                q = rot.conjugated().copy()
-                q.rotate(rot)
-                quat = q
-                q = rot.conjugated().copy()
-
-                if not parent:
-                    q.rotate(Quaternion((rotation[3], *rotation[:3])).conjugated())
-                else:
-                    q.rotate(Quaternion((rotation[3], *rotation[:3])))
-                quat.rotate(q.conjugated())
-
-                quat_list.append(quat)
-
-            return quat_list
-
-        if data_path == "scale":
-            return [Vector(([abs(y) for y in x]))[:] for x in values]
-        return values
-
-    def convert_anm_values_tranformed_root(self, data_path, values, loc: Vector, rot: Quaternion):
-        if data_path == "location":
-            return [loc + Vector((y * 0.01 for y in x)) for x in values]
-        if data_path == "rotation_euler":
-            return [(rot @ ((Euler((radians(y) for y in x), "ZYX").to_quaternion()).to_euler()).to_quaternion())[:] for x in values]
-        if data_path == "rotation_quaternion":
-            return [Quaternion((x[3], *x[:3])) for x in values]
-        if data_path == "scale":
-            return [Vector((abs(y) for y in x)) for x in values]
-        return values
+    def convertQuaternionRotation(self, keyframes, brot):
+        #Rotations Quaternion
+        rotations = {}
+        for frame, rotation in keyframes:
+            bind_rotaion = brot.conjugated()
+            rotation = Quaternion((rotation[3], *rotation[:3]))
+            #rotate it with the new rotation
+            bind_rotaion.rotate(rotation)
+            #invert the result
+            rotations[frame] = Quaternion(bind_rotaion).conjugated()
+        
+        return rotations
 
 
+    def convertVectorLocation(self, keyframes, bloc, brot):
+        locations = {}
+        for frame, loc in keyframes:
+            loc = Vector(loc) * 0.01
+            bind_loc = Vector(bloc)
+            loc.rotate(brot)
+            bind_loc.rotate(brot)
+
+            locations[frame] = loc - bind_loc
+        
+        return locations
+
+    def convertVectorScale(self, keyframes, bscale):
+        return {keyframe: (Vector(value) * bscale) for keyframe,value in keyframes}
+
+
+    def insertFrames(self, action, group_name, data_path, values, values_count):
+        if len(values):
+            for i in range(values_count):
+                fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                fc.keyframe_points.add(len(values.keys()))
+                fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), values.keys(), values.values())) for x in co])
+
+                fc.update()
+        
+    
 def menu_func_import(self, context):
     self.layout.operator(CCS_IMPORTER_OT_IMPORT.bl_idname,
                         text='CyberConnect Streaming File (.ccs)')

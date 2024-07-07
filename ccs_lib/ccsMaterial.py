@@ -18,10 +18,11 @@ class ccsMaterial(BrStruct):
 
         self.textureIndex = br.read_uint32()
         self.alpha = br.read_float()
-        if version > 0x123:
+        if version > 0x130:
             self.offsetX = br.read_float()
             self.offsetY = br.read_float()
-        elif version <= 0x123 and version > 0x120:
+            values = br.read_float(18)
+        elif version <= 0x130 and version > 0x120:
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
@@ -29,10 +30,7 @@ class ccsMaterial(BrStruct):
         else:
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
-        
-        if version >= 0x125:
-            values = br.read_float(18)
-    
+
 
     def finalize(self, chunks):
         self.texture = chunks[self.textureIndex]

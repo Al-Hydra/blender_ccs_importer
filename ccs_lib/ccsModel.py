@@ -52,7 +52,7 @@ class RigidMesh(BrStruct):
                 self.vertices[i].color = br.read_uint8(4)
         
         if modelFlags & 4 == 0:
-            if version > 0x125:
+            if version >= 0x125:
                 for i in range(self.vertexCount):
                     self.vertices[i].UV = (br.read_int32() / 65536, br.read_int32() / 65536)
             else:
@@ -306,7 +306,9 @@ class ccsModel(BrStruct):
         self.meshCount = br.read_uint16()
         self.matFlags = br.read_uint16()
         self.unkFlags = br.read_int16()
-        self.lookupListCount = br.read_uint32()
+        self.lookupListCount = br.read_uint8()
+        self.unk1 = br.read_uint8()
+        self.unk2 = br.read_uint16()
         #print(self.ModelType)
 
         if version > 0x110:

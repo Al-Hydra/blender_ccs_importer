@@ -333,10 +333,6 @@ def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
         vectorFrames = {br.read_int32(): br.read_float(3) for i in range(frameCount)}
-
-        '''for i in range(frameCount):
-            frame = br.read_uint32()
-            vectorFrames[frame] = br.read_float(3)'''
     
     elif ctrlFlags & 7 == 1:
         position = br.read_float(3)
@@ -349,10 +345,6 @@ def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
         rotationFrames = {br.read_int32(): br.read_float(3) for i in range(frameCount)}
-
-        '''for i in range(frameCount):
-            frame = br.read_uint32()
-            rotationFrames[frame] = br.read_float(3)'''
     
     elif ctrlFlags & 7 == 1:
         rotationFrames[currentFrame] = br.read_float(3)
@@ -364,9 +356,6 @@ def readRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 4:
         frameCount = br.read_uint32()
         rotationFrames = {br.read_int32(): br.read_float(4) for i in range(frameCount)}
-        '''for i in range(frameCount):
-            frame = br.read_uint32()
-            rotationFrames[frame] = br.read_float(4)'''
     
     return rotationFrames
 
@@ -376,10 +365,6 @@ def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
         frameCount = br.read_uint32()
 
         floatFrames = {br.read_int32(): br.read_float() for i in range(frameCount)}
-
-        '''for i in range(frameCount):
-            frame = br.read_uint32()
-            floatFrames[frame] = br.read_float()'''
     
     elif ctrlFlags & 7 == 1:
         floatFrames[currentFrame] =  br.read_float()
