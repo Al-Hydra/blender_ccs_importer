@@ -24,9 +24,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
             continue
         
         elif chunkType == CCSTypes.ObjectController:
-            objectCtrl = br.read_struct(objectController, None, currentFrame)
+            objectCtrl: objectController = br.read_struct(objectController, None, currentFrame)
             self.objectControllers.append(objectCtrl)
-        
+            
         elif chunkType == CCSTypes.ObjectFrame:
             objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
             obj = self.objects.get(objF.name)
@@ -81,6 +81,8 @@ class objectController(BrStruct):
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.scales = readVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
         self.opacity = readFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+
+        
     
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]
@@ -173,24 +175,27 @@ class morphController(BrStruct):
     def __init__(self):
         self.morph = None
         self.target = None
-        self.morphValues = {}
+        self.morphTargets = []
 
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.morphIndex = br.read_uint32()
-        self.ctrlFlags = br.read_uint32()
-        self.targetIndex = br.read_uint32()
-        self.unk = br.read_uint32()
-
-        self.frameCount = br.read_uint32()
-
-        self.morphValues = {br.read_int32() : br.read_float() for i in range(self.frameCount)}
-
-        #self.morphValues = readFloat(br, self.morphValues, self.ctrlFlags, currentFrame)
+        self.targetsCount = br.read_uint32()
+        
+        self.morphTargets = br.read_struct(morphTarget, self.targetsCount, currentFrame)
 
 
     def finalize(self, chunks):
         self.morph = chunks[self.morphIndex]
         self.target = chunks[self.targetIndex]
+
+
+class morphTarget(BrStruct):
+    def __br_read__(self, br: BinaryReader, currentFrame):
+        morphValues = {}
+        self.index = br.read_uint32()
+        ctrlFlags = br.read_uint32()
+
+        self.values = readFloat(br, morphValues, ctrlFlags, currentFrame)
 
 
 class frame(BrStruct):

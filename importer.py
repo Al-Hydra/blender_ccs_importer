@@ -414,7 +414,7 @@ class importCCS:
                     elif direction == -1:
                         face = bm.faces.new((bm.verts[i], bm.verts[i-1], bm.verts[i-2]))
                     
-                    face.material_index = matIndex
+                    face.material_index = matIndex  
                     face.smooth = True
                     for loop in face.loops:
                         loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
@@ -803,7 +803,7 @@ class importCCS:
                     loc, rot, fov = values
                     locations[frame] = Vector(loc) * 0.01
                     rotations[frame] = [radians(r) for r in rot] 
-                    fovs[frame] = cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))
+                    fovs[frame] = [cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))]
 
                 data_path = f'{"location"}'
                 self.insertFrames(camera_action, group_name, data_path, locations, 3)
@@ -812,7 +812,7 @@ class importCCS:
                 self.insertFrames(camera_action, group_name, data_path, rotations, 3)
                 
                 data_path = f'{"data.lens"}'
-                self.insertFrames(camera_action, group_name, data_path, fov, 1)
+                self.insertFrames(camera_action, group_name, data_path, fovs, 1)
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
