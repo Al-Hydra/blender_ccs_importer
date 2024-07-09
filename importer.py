@@ -353,7 +353,7 @@ class importCCS:
             if hasattr(tex, "name"):
                 img = bpy.data.images.get(tex.name)    
                 
-                if not img and tex.type == 'Texture':
+                if not img and tex.type == 'Texture' and tex.textureData:
                     texture = tex.convertTexture()
 
                     img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
@@ -666,8 +666,8 @@ class importCCS:
             ccsAnmObj = objCtrl.object
             target_bone = ccsAnmObj.name
 
-            if ccsAnmObj.name.find(source) != -1:
-                target_bone = ccsAnmObj.name.replace(source, target)
+            #if ccsAnmObj.name.find(source) != -1:
+                #target_bone = ccsAnmObj.name.replace(source, target)
             
             if ccsAnmObj.clump:
                 clump = ccsAnmObj.clump.name
@@ -680,6 +680,9 @@ class importCCS:
                     continue
 
             armatureObj = bpy.data.objects.get(clump)
+
+            #armatureObj = bpy.data.objects.get("1sskbod1")
+            #target_bone = target_bone[4:]
 
             armatureObj.animation_data_create()
             armatureObj.animation_data.action = action
@@ -696,8 +699,10 @@ class importCCS:
 
             group_name = action.groups.new(name = posebone.name).name
 
+            if ccsAnmObj.name.find(source) != -1:
+                group_name = action.groups.new(name = posebone.name.replace(source, target)).name
+            
             bone_path = f'pose.bones["{group_name}"]'
-
 
             locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot)
             data_path = f'{bone_path}.{"location"}'
