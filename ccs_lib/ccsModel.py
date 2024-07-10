@@ -316,7 +316,7 @@ class ccsModel(BrStruct):
             self.outlineWidth = br.read_float()
         
         #print(f'LookupListCount = {self.LookupListCount}')
-        if self.modelType & ModelTypes.Deformable and version > 0x111:
+        if (self.modelType & 1 == 0) and (self.modelType & 4) and version > 0x111:
             self.lookupList = [br.read_uint8() for i in range(self.lookupListCount)]
             br.align_pos(4)
             #print(f'lookupTable = {self.LookupList}')

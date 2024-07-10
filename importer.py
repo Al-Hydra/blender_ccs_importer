@@ -67,6 +67,10 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     swap_names: BoolProperty(name = "Swap Character Code", default = False) # type: ignore
     source_name: StringProperty(name= "Source Name") # type: ignore
     target_name: StringProperty(name = "Target Name") # type: ignore
+    use_target_skeleton: BoolProperty(name = "Select a target skeleton") #type: ignore
+    target_skeleton: StringProperty(name = "Target Armature") #type: ignore
+    slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
+    slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
     
     def execute(self, context):
 
@@ -95,6 +99,30 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
             row.prop(self, "source_name")
             row = layout.row()
             row.prop(self, "target_name")
+        
+        
+        row = layout.row()
+        row.prop(self, "use_target_skeleton")
+        if self.use_target_skeleton:
+            row = layout.row()
+            row.prop_search(self, "target_skeleton", bpy.data, "armatures")
+
+        source_example = f"OBJ_{self.source_name}00t0 trall"
+        target_example = f"OBJ_{self.target_name}00t0 trall"
+
+        row = layout.row()
+        row.prop(self, "slice_name")
+        if self.slice_name:
+            row.prop(self, "slice_count")
+        
+
+        if self.swap_names:
+            row = layout.row()
+            row.label(text = f"Old name example: {source_example[self.slice_count:]}")
+            row = layout.row()
+            row.label(text = f"New name example: {target_example[self.slice_count:]}")
+            
+        
 
 
 class DropCCS(Operator):
@@ -109,6 +137,10 @@ class DropCCS(Operator):
     swap_names: BoolProperty(name = "Swap Character Code", default = False) # type: ignore
     source_name: StringProperty(name= "Source Name") # type: ignore
     target_name: StringProperty(name = "Target Name") # type: ignore
+    use_target_skeleton: BoolProperty(name = "Select a target skeleton") #type: ignore
+    target_skeleton: StringProperty(name = "Target Armature") #type: ignore
+    slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
+    slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
     
     def execute(self, context):
 
@@ -127,6 +159,7 @@ class DropCCS(Operator):
 
         return {'FINISHED'}
 
+
 class CCS_FH_import(bpy.types.FileHandler):
     bl_idname = "CCS_FH_import"
     bl_label = "File handler for CCS files"
@@ -136,6 +169,9 @@ class CCS_FH_import(bpy.types.FileHandler):
     @classmethod
     def poll_drop(cls, context):
         return (context.area and context.area.type == 'VIEW_3D')
+    
+    def draw():
+        pass
 
 
 class importCCS:
@@ -679,10 +715,12 @@ class importCCS:
                 else:
                     continue
 
-            armatureObj = bpy.data.objects.get(clump)
+            if self.use_target_skeleton:
+                target_armature = bpy.data.objects.get(self.target_skeleton)
+                target_armature.animation_data_create()
+                target_armature.animation_data.action = action
 
-            #armatureObj = bpy.data.objects.get("1sskbod1")
-            #target_bone = target_bone[4:]
+            armatureObj = bpy.data.objects.get(clump)
 
             armatureObj.animation_data_create()
             armatureObj.animation_data.action = action
@@ -698,9 +736,20 @@ class importCCS:
             bscale = Vector(bone["original_coords"][2])
 
             group_name = action.groups.new(name = posebone.name).name
+            #group_name = posebone.name
 
-            if ccsAnmObj.name.find(source) != -1:
-                group_name = action.groups.new(name = posebone.name.replace(source, target)).name
+            if self.swap_names:
+                if ccsAnmObj.name.find(source) != -1:
+                    new_bone_name = posebone.name.replace(source, target)
+
+                    if self.slice_name:
+                        new_bone_name = new_bone_name[self.slice_count:]
+                    
+                    if self.use_target_skeleton:
+                        if target_armature.get(new_bone_name):
+                            new_bone_name = target_armature.get(new_bone_name)
+
+                    group_name = action.groups.new(name = new_bone_name).name
             
             bone_path = f'pose.bones["{group_name}"]'
 
@@ -843,13 +892,13 @@ class importCCS:
                     ccsShader.inputs["Y Offset"].default_value = mat.offsetY[ofsY] - offsetY_value 
                     ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= ofsY)
                 
-                for sclX in mat.scaleX.keys():
-                    ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] - scaleX_value 
+                '''for sclX in mat.scaleX.keys():
+                    ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] + scaleX_value 
                     ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= sclX)
                 
                 for sclY in mat.scaleY.keys():
-                    ccsShader.inputs["Y Scale"].default_value = mat.scaleY[sclY] - scaleY_value 
-                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)
+                    ccsShader.inputs["Y Scale"].default_value = mat.scaleY[sclY] + scaleY_value 
+                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)'''
                 
                 material_action = blender_mat.node_tree.animation_data.action
 
