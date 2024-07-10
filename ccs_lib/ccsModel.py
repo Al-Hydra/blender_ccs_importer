@@ -2,8 +2,8 @@ from enum import IntFlag
 from .utils.PyBinaryReader.binary_reader import *
 class ModelTypes(IntFlag):
     Rigid1 = 0
-    Rigid2   = 1
-    Unk = 2
+    Rigid2 = 1
+    TrianglesList = 2
     Deformable = 4
     ShadowMesh = 8
 
@@ -15,16 +15,10 @@ class RigidMesh(BrStruct):
         self.unk = 0
         self.parent = None
         self.vertices = []
-    def __br_read__(self, br: BinaryReader, deformable=False, vertexScale=64, modelFlags=0, version = 0x110):
-        if deformable:
-            self.materialIndex = br.read_uint32()
-            self.vertexCount = br.read_uint32()
-            self.unk = br.read_uint32() #this could be the count of deformable vertices
-            self.parentIndex = br.read_uint32()
-        else:
-            self.parentIndex = br.read_uint32()
-            self.materialIndex = br.read_uint32()
-            self.vertexCount = br.read_uint32()
+    def __br_read__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110):
+        self.parentIndex = br.read_uint32()
+        self.materialIndex = br.read_uint32()
+        self.vertexCount = br.read_uint32()
         
         if self.vertexCount > 0x10000:
             exception = ValueError(f'VertexCount is greater than 0x10000: {self.vertexCount}, offset = {hex(br.pos())}')
@@ -34,7 +28,6 @@ class RigidMesh(BrStruct):
 
         self.vertices = [Vertex() for i in range(self.vertexCount)]
 
-        #if modelFlags & 2 == 0: #useless check, causes issues with models that have a deformable mesh
         for i in range(self.vertexCount):
             self.vertices[i].position = ((br.read_int16() * finalScale),
                                         (br.read_int16() * finalScale),
@@ -47,7 +40,7 @@ class RigidMesh(BrStruct):
                                         br.read_int8() / 64)
             self.vertices[i].triangleFlag = br.read_uint8()
 
-        if ((modelFlags & 2) != 2) and not deformable:
+        if ((modelFlags & 2) != 2):
             for i in range(self.vertexCount):
                 self.vertices[i].color = br.read_uint8(4)
         
@@ -75,11 +68,8 @@ class ShadowMesh(BrStruct):
         self.vertexCount = br.read_uint32()
         self.triangleVerticesCount = br.read_uint32()
         #self.vertexPositions = [br.read_int16(3) for i in range(self.vertexCount)]
-        for i in range(self.vertexCount):
+        self.vertices = [Vertex((br.read_int16() / 16, br.read_int16() / 16, br.read_int16() / 16), (0)*3, (0)*4, (0, 0), vertexScale) for i in range(self.vertexCount)]
 
-            pos = (br.read_int16() / 16, br.read_int16() / 16, br.read_int16() / 16)
-
-            self.vertices.append(Vertex(pos, (0, 0, 0), (0, 0, 0, 0), (0, 0), vertexScale))
         br.align_pos(4)
         self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
 
@@ -92,92 +82,131 @@ class DeformableMesh(BrStruct):
     def __init__(self):
         self.material = None
         self.vertexCount = 0
-        self.unk = 0
+        self.deformableVerticesCount = 0
         self.vertices = []
-    def __br_read__(self, br: BinaryReader, vertexScale=256, version = 0x100):
+    def __br_read__(self, br: BinaryReader, vertexScale=256, version = 0x100, tanBinFlag = 0):
         self.materialID = br.read_uint32()
         #print(f'MaterialID = {self.MaterialID}')
         self.vertexCount = br.read_uint32() #This is the number of vertices that are actually used
         #print(f'VertexCount = {self.VertexCount}')
-
-        self.totalVertexCount = br.read_uint32() #This is the total count of all vertices
-                                                 #there are some duplicates because they store 1 vertex weight per position
-                                                 #so if a vertex has 2 weights, it will be stored twice
+        self.deformableVerticesCount = br.read_uint32() 
         #print(f'TotalVertexCount = {self.TotalVertexCount}')
-        self.vertices = list()
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
-        if version < 0x125:
-            vpBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 8), encoding='cp932')
-            vnBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 4), encoding='cp932')
-            uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+        #Single weight vertices
+        if not self.deformableVerticesCount:
+            boneID = br.read_uint32()
+            vpBuffer = BinaryReader(br.read_bytes(self.vertexCount * 6), encoding='cp932')
+            br.align_pos(4)
+            vnBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
 
             for i in range(self.vertexCount):
-
                 vertex = DeformableVertex()
-                
                 vertex.positions[0] = ((vpBuffer.read_int16() * finalScale),
                                         (vpBuffer.read_int16() * finalScale),
                                         (vpBuffer.read_int16() * finalScale))
-
-                vertParams = vpBuffer.read_uint16()
-                vertex.boneIDs[0] = vertParams >> 10
-                vertex.weights[0] = (vertParams & 0x1ff) / 256
-
+                
+                vertex.boneIDs[0] = boneID
+                vertex.weights[0] = 1
                 vertex.normals[0] = (vnBuffer.read_int8() / 64,
                                      vnBuffer.read_int8() / 64,
                                      vnBuffer.read_int8() / 64)
                 vertex.triangleFlag = vnBuffer.read_int8()
-                
-                if ((vertParams >> 9) & 0x1) == 0:
-                    vertex.positions[1] = ((vpBuffer.read_int16()) * finalScale,
-                                           (vpBuffer.read_int16()) * finalScale,
-                                           (vpBuffer.read_int16()) * finalScale)
-                    
-                    secondParams = vpBuffer.read_uint16()
-                    vertex.weights[1] = (secondParams & 0x1ff) / 256
-                    vertex.boneIDs[1] = (secondParams >> 10)
-
-                    vertex.normals[1] = (vnBuffer.read_int8() / 64,
-                                         vnBuffer.read_int8() / 64,
-                                         vnBuffer.read_int8() / 64)
-                    vertex.triangleFlag = vnBuffer.read_int8()
-
-                vertex.UV = (uvBuffer.read_int16() / 256, uvBuffer.read_int16() / 256)
-                
-                self.vertices.append(vertex)
-        
-        else:
-            vpBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 0x0c), encoding='cp932')
-            vnBuffer = BinaryReader(br.read_bytes(self.totalVertexCount * 4), encoding='cp932')
-            uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 8), encoding='cp932')
-
-            for i in range(self.vertexCount):
-                vertex = DeformableVertex()
-
-                stopBit = 0
-                i = 0
-                while(stopBit == 0):
-                    vertex.positions[i] = ((vpBuffer.read_int16() * finalScale),
-                                                (vpBuffer.read_int16() * finalScale),
-                                                (vpBuffer.read_int16() * finalScale))
-                    
-                    vertex.weights[i] = vpBuffer.read_int16() / 256
-                    stopBit = vpBuffer.read_int16()
-                    vertex.boneIDs[i] = vpBuffer.read_int16()
-
-                    vertex.normals[i] =  (vnBuffer.read_int8() / 64,
-                                          vnBuffer.read_int8() / 64,
-                                          vnBuffer.read_int8() / 64)
-                    
-                    vertex.triangleFlag = vnBuffer.read_int8()
-
-                    i += 1
-
-                vertex.UV = (uvBuffer.read_int32() / 65536, uvBuffer.read_int32() / 65536)
 
                 self.vertices.append(vertex)
+
+            if version > 0x125:
+                for v in self.vertices:
+                    v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
+
+            else:
+                for v in self.vertices:
+                    v.UV = (br.read_int16() / 256, br.read_int16() / 256)
+                
+
+            if tanBinFlag:
+                vtBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+                vbnBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+                
+
+
+        else: #multiple weights vertices
+            if version < 0x125:
+                vpBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 8), encoding='cp932')
+                vnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
+                uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+
+
+                for i in range(self.vertexCount):
+
+                    vertex = DeformableVertex()
+                    
+                    vertex.positions[0] = ((vpBuffer.read_int16() * finalScale),
+                                            (vpBuffer.read_int16() * finalScale),
+                                            (vpBuffer.read_int16() * finalScale))
+
+                    vertParams = vpBuffer.read_uint16()
+                    vertex.boneIDs[0] = vertParams >> 10
+                    vertex.weights[0] = (vertParams & 0x1ff) / 256
+
+                    vertex.normals[0] = (vnBuffer.read_int8() / 64,
+                                        vnBuffer.read_int8() / 64,
+                                        vnBuffer.read_int8() / 64)
+                    vertex.triangleFlag = vnBuffer.read_int8()
+                    
+                    if ((vertParams >> 9) & 0x1) == 0:
+                        vertex.positions[1] = ((vpBuffer.read_int16()) * finalScale,
+                                            (vpBuffer.read_int16()) * finalScale,
+                                            (vpBuffer.read_int16()) * finalScale)
+                        
+                        secondParams = vpBuffer.read_uint16()
+                        vertex.weights[1] = (secondParams & 0x1ff) / 256
+                        vertex.boneIDs[1] = (secondParams >> 10)
+
+                        vertex.normals[1] = (vnBuffer.read_int8() / 64,
+                                            vnBuffer.read_int8() / 64,
+                                            vnBuffer.read_int8() / 64)
+                        vertex.triangleFlag = vnBuffer.read_int8()
+
+                    vertex.UV = (uvBuffer.read_int16() / 256, uvBuffer.read_int16() / 256)
+                    
+                    self.vertices.append(vertex)
+            
+            else:
+                vpBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 0x0c), encoding='cp932')
+                vnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
+                uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 8), encoding='cp932')
+
+                if tanBinFlag:
+                    vtBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
+                    vbnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
+
+                for i in range(self.vertexCount):
+                    vertex = DeformableVertex()
+
+                    stopBit = 0
+                    i = 0
+                    while(stopBit == 0):
+                        vertex.positions[i] = ((vpBuffer.read_int16() * finalScale),
+                                                    (vpBuffer.read_int16() * finalScale),
+                                                    (vpBuffer.read_int16() * finalScale))
+                        
+                        vertex.weights[i] = vpBuffer.read_int16() / 256
+                        stopBit = vpBuffer.read_int16()
+                        vertex.boneIDs[i] = vpBuffer.read_int16()
+
+                        vertex.normals[i] =  (vnBuffer.read_int8() / 64,
+                                            vnBuffer.read_int8() / 64,
+                                            vnBuffer.read_int8() / 64)
+                        
+                        vertex.triangleFlag = vnBuffer.read_int8()
+
+                        i += 1
+
+                    vertex.UV = (uvBuffer.read_int32() / 65536, uvBuffer.read_int32() / 65536)
+
+                    self.vertices.append(vertex)
                 
 
     def finalize(self, chunks):
@@ -307,8 +336,11 @@ class ccsModel(BrStruct):
         self.matFlags = br.read_uint16()
         self.unkFlags = br.read_int16()
         self.lookupListCount = br.read_uint8()
-        self.unk1 = br.read_uint8()
-        self.unk2 = br.read_uint16()
+        self.extraFlags = br.read_uint8()
+        self.tangentBinormalsFlag = br.read_uint16()
+
+        if self.tangentBinormalsFlag == 1:
+            breakpoint()
         #print(self.ModelType)
 
         if version > 0x110:
@@ -326,30 +358,24 @@ class ccsModel(BrStruct):
         self.meshes = list()
         if self.meshCount > 0:
             
-            if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.Unk:
+            if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.TrianglesList:
 
-                if self.lookupListCount > 1:
-                    for i in range(self.meshCount-1):
-                        self.meshes.append(br.read_struct(RigidMesh, None, True, self.vertexScale, self.modelFlags, version))
-                    
-                    self.meshes.append(br.read_struct(DeformableMesh, None, self.vertexScale, version))
-                else:
-                    self.meshes.append(br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version))
+                self.meshes = br.read_struct(DeformableMesh, self.meshCount, self.vertexScale, version, self.tangentBinormalsFlag)
 
             elif self.modelType == ModelTypes.ShadowMesh:
                 self.meshes.append(br.read_struct(ShadowMesh))
             
-            elif self.modelType & ModelTypes.Unk:
+            elif self.modelType & ModelTypes.TrianglesList:
                 for i in range(self.meshCount):
                     self.meshes.append(br.read_struct(unkMesh, None, self.vertexScale))
 
             else:
                 for i in range(self.meshCount):
-                    rigidmesh = br.read_struct(RigidMesh, None, False, self.vertexScale, self.modelFlags, version)
+                    rigidmesh = br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version)
                     self.meshes.append(rigidmesh)
     
     def finalize(self, chunks):
-        if self.modelType & ModelTypes.Unk:
+        if self.modelType & ModelTypes.TrianglesList:
                 self.lookupList = self.clump.boneIndices
                 self.lookupNames = [chunks[i].name for i in self.lookupList]
         

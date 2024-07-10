@@ -228,13 +228,7 @@ class importCCS:
                     
                     normals = []
 
-                    if len(model.lookupList) > 1:
-                        meshRange = model.meshes[0:-1]
-                    else:
-                        meshRange = model.meshes
-
-                    for i, mesh in enumerate(meshRange):
-                        parent = armature.data.bones.get(model.lookupNames[mesh.parentIndex])
+                    for i, mesh in enumerate(model.meshes):
                         
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
@@ -246,22 +240,8 @@ class importCCS:
                             mat_slot = obj.material_slots.get(mat.name)
                             matIndex = mat_slot.slot_index
 
-                        meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)                        
-                    
-                    #deformable mesh
-                    if len(model.lookupList) > 1:
-                        mesh = model.meshes[-1]
-                        #add the mesh material
-                        mat = self.makeMaterial(model, mesh)
-                        mat_slot = obj.material_slots.get(mat.name)
-                        if mat_slot:
-                            matIndex = mat_slot.slot_index
-                        else:
-                            obj.data.materials.append(mat)
-                            mat_slot = obj.material_slots.get(mat.name)
-                            matIndex = mat_slot.slot_index
-                    
-                        meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals)
+                        #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
+                        meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals)                       
 
                     #meshdata.normals_split_custom_set_from_vertices(normals)
       
