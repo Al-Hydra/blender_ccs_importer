@@ -68,7 +68,7 @@ class ShadowMesh(BrStruct):
         self.vertexCount = br.read_uint32()
         self.triangleVerticesCount = br.read_uint32()
         #self.vertexPositions = [br.read_int16(3) for i in range(self.vertexCount)]
-        self.vertices = [Vertex((br.read_int16() / 16, br.read_int16() / 16, br.read_int16() / 16), (0)*3, (0)*4, (0, 0), vertexScale) for i in range(self.vertexCount)]
+        self.vertices = [Vertex((br.read_int16() / 16, br.read_int16() / 16, br.read_int16() / 16), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
 
         br.align_pos(4)
         self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
