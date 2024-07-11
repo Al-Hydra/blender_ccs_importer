@@ -1,6 +1,7 @@
 from .PyBinaryReader.binary_reader import *
 from enum import Enum
 from itertools import chain
+import numpy as np
 
 
 class TGA(BrStruct):
@@ -107,33 +108,51 @@ def rgbaToTGA(width,height,textureData):
 def indexed8ToTGA(width, height, indices, colorPalette):
     tga = TGA()
 
+    # Convert indices and colorPalette to NumPy arrays
+    indices_array = np.array(indices, dtype=np.uint8)
+    colorPalette_array = np.array(colorPalette, dtype=np.uint8)
+
+    # Use indices_array as index to colorPalette_array
+    pixels = colorPalette_array[indices_array]
+
+    # Flatten pixels array and convert to bytes
+    pixels_bytes = pixels.flatten().tobytes()
+
     tga.ImageID = ""
-    tga.ColorMapType = 1
-    tga.DataTypeCode = DataTypes.UNCOMPRESSED_COLOR_MAPPED.value
+    tga.ColorMapType = 0
+    tga.DataTypeCode = DataTypes.UNCOMPRESSED_TRUE_COLOR.value
     tga.ColorMapOrigin = 0
-    tga.ColorMapLength = 256
-    tga.ColorMapDepth = 32
+    tga.ColorMapLength = 0
+    tga.ColorMapDepth = 0
     tga.x_Origin = 0
     tga.y_Origin = 0
     tga.Width = width
     tga.Height = height
-    tga.BitsPerPixel = 8
+    tga.BitsPerPixel = 32
     tga.ImageDescriptor = 0
-    tga.PaletteData = []
-    for color in colorPalette:
-        tga.PaletteData.extend(color)
-    tga.PaletteData = bytes(tga.PaletteData)
-    tga.ImageData = bytes(indices)
+    tga.ImageData = pixels_bytes
 
     with BinaryReader(bytearray(), Endian.LITTLE, 'cp932') as br:
         br.write_struct(tga)
 
         return br.buffer()
 
+
 def indexed4ToTGA(width, height, indices, colorPalette):
     tga = TGA()
-    pixels = [(colorPalette[i & 0xF] + colorPalette[i >> 4]) for i in indices]
-    pixels = bytes(chain.from_iterable(pixels))
+
+    indices  = np.array(indices, dtype=np.uint8)
+    colorPalette = np.array(colorPalette, dtype=np.uint8)
+
+    # Use bitwise operations to extract lower and upper nibbles
+    lower_nibble = indices & 0xF
+    upper_nibble = indices >> 4
+
+    #Create pixels array using NumPy array operations
+    pixels = np.concatenate((colorPalette[lower_nibble], colorPalette[upper_nibble]), axis=1)
+
+    # Flatten pixels array and convert to bytes
+    pixels_bytes = pixels.flatten().tobytes()
 
 
     tga.ImageID = ""
@@ -148,7 +167,7 @@ def indexed4ToTGA(width, height, indices, colorPalette):
     tga.Height = height
     tga.BitsPerPixel = 32
     tga.ImageDescriptor = 0
-    tga.ImageData = bytes(pixels)
+    tga.ImageData = pixels_bytes
 
     with BinaryReader(bytearray(), Endian.LITTLE, 'cp932') as br:
         br.write_struct(tga)

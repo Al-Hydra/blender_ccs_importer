@@ -19,38 +19,30 @@ class RigidMesh(BrStruct):
         self.parentIndex = br.read_uint32()
         self.materialIndex = br.read_uint32()
         self.vertexCount = br.read_uint32()
-        
-        if self.vertexCount > 0x10000:
-            exception = ValueError(f'VertexCount is greater than 0x10000: {self.vertexCount}, offset = {hex(br.pos())}')
-            raise exception
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
-        self.vertices = [Vertex() for i in range(self.vertexCount)]
-
-        for i in range(self.vertexCount):
-            self.vertices[i].position = ((br.read_int16() * finalScale),
-                                        (br.read_int16() * finalScale),
-                                        (br.read_int16() * finalScale))        
+        self.vertices = [Vertex(br.read_int16(3), scale= vertexScale) for i in range(self.vertexCount)]
         br.align_pos(4)
 
-        for i in range(self.vertexCount):
-            self.vertices[i].normal = (br.read_int8() / 64,
-                                        br.read_int8() / 64,
-                                        br.read_int8() / 64)
-            self.vertices[i].triangleFlag = br.read_uint8()
+        for vertex in self.vertices:
+            vertex.normal = tuple((map(lambda x: x/64, br.read_int8(3))))
+            vertex.triangleFlag = br.read_int8()
 
-        if ((modelFlags & 2) != 2):
-            for i in range(self.vertexCount):
-                self.vertices[i].color = br.read_uint8(4)
         
-        if modelFlags & 4 == 0:
-            if version >= 0x125:
-                for i in range(self.vertexCount):
-                    self.vertices[i].UV = (br.read_int32() / 65536, br.read_int32() / 65536)
-            else:
-                for i in range(self.vertexCount):
-                    self.vertices[i].UV = (br.read_int16() / 256, br.read_int16() / 256)
+        if ((modelFlags & 2) == 0):
+            for i in range(self.vertexCount):
+                vertex.color = br.read_uint8(4)
+
+
+        if version > 0x125:
+            for v in self.vertices:
+                v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
+
+        else:
+            for v in self.vertices:
+                v.UV = (br.read_int16() / 256, br.read_int16() / 256)
+
     
     def finalize(self, chunks):
         self.material = chunks[self.materialIndex]
@@ -67,8 +59,7 @@ class ShadowMesh(BrStruct):
     def __br_read__(self, br: BinaryReader, vertexScale=64):
         self.vertexCount = br.read_uint32()
         self.triangleVerticesCount = br.read_uint32()
-        #self.vertexPositions = [br.read_int16(3) for i in range(self.vertexCount)]
-        self.vertices = [Vertex((br.read_int16() / 16, br.read_int16() / 16, br.read_int16() / 16), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
+        self.vertices = [Vertex((br.read_int16(), br.read_int16(), br.read_int16()), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
 
         br.align_pos(4)
         self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
@@ -392,7 +383,7 @@ class ccsModel(BrStruct):
 
 class Vertex(BrStruct):
     def __init__(self, p=(0,0,0), n=(0,0,0), c=(1,1,1,1), uv=(0,0), scale = 256, flag=0):
-        scale = (scale / 256) * 0.01
+        scale = ((scale / 256)  / 16) * 0.01
 
         self.position = (p[0] * scale,
                         p[1] * scale,

@@ -15,7 +15,8 @@ class ccsClut(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
         self.blitGroup = br.read_uint32()
-        br.seek(8, 1)
+        br.seek(7, 1)
+        self.alphaFlag = br.read_int8()
 
         self.colorCount = br.read_uint32()
         for i in range(self.colorCount):
