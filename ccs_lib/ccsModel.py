@@ -339,8 +339,6 @@ class ccsModel(BrStruct):
         self.extraFlags = br.read_uint8()
         self.tangentBinormalsFlag = br.read_uint16()
 
-        if self.tangentBinormalsFlag == 1:
-            breakpoint()
         #print(self.ModelType)
 
         if version > 0x110:
