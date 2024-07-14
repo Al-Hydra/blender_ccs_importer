@@ -99,7 +99,7 @@ def rgbaToTGA(width,height,textureData):
     tga.y_Origin = 0
     tga.Width = width
     tga.Height = height
-    tga.BitsPerPixel = 8
+    tga.BitsPerPixel = 32
     tga.ImageDescriptor = 0
     tga.PaletteData = []
     tga.ImageData = bytes(textureData)

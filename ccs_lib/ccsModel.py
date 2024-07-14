@@ -34,14 +34,14 @@ class RigidMesh(BrStruct):
             for i in range(self.vertexCount):
                 vertex.color = br.read_uint8(4)
 
+        if ((modelFlags & 4) == 0):
+            if version > 0x125:
+                for v in self.vertices:
+                    v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
 
-        if version > 0x125:
-            for v in self.vertices:
-                v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
-
-        else:
-            for v in self.vertices:
-                v.UV = (br.read_int16() / 256, br.read_int16() / 256)
+            else:
+                for v in self.vertices:
+                    v.UV = (br.read_int16() / 256, br.read_int16() / 256)
 
     
     def finalize(self, chunks):
@@ -364,21 +364,15 @@ class ccsModel(BrStruct):
                     self.meshes.append(rigidmesh)
     
     def finalize(self, chunks):
-        if self.modelType & ModelTypes.TrianglesList:
-                self.lookupList = self.clump.boneIndices
-                self.lookupNames = [chunks[i].name for i in self.lookupList]
-        
-        elif self.modelType & ModelTypes.Deformable:
-            if self.clump and self.lookupList:
+        if not self.lookupList and self.clump:
+            self.lookupList = self.clump.boneIndices
+        '''if self.clump and self.lookupList:
                 self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
-                self.lookupNames = [chunks[i].name for i in self.lookupList]
-            else:
-                self.lookupList = self.clump.boneIndices
-                self.lookupNames = [chunks[i].name for i in self.lookupList]
+        elif self.clump:
+            self.lookupList = self.clump.boneIndices'''
         
         for mesh in self.meshes:
-            if mesh:
-                mesh.finalize(chunks)
+            mesh.finalize(chunks)
 
 
 class Vertex(BrStruct):

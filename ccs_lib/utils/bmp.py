@@ -1,11 +1,18 @@
-import zlib, struct, time
+import zlib, struct, time, numpy as np
 from .PyBinaryReader.binary_reader import *
-from array import array
-from itertools import chain
 
-def I8toBMP(width, height, indices, color_table):
-    pixels = [color_table[i] for i in indices]
-    pixels = bytes(chain.from_iterable(pixels))
+
+
+def I8toBMP(width, height, indices, colorPalette):
+    # Convert indices and colorPalette to NumPy arrays
+    indices_array = np.array(indices, dtype=np.uint8)
+    colorPalette_array = np.array(colorPalette, dtype=np.uint8)
+
+    # Use indices_array as index to colorPalette_array
+    pixels = colorPalette_array[indices_array]
+
+    # Flatten pixels array and convert to bytes
+    pixels_bytes = pixels.flatten().tobytes()
 
     with BinaryReader(bytearray(), Endian.LITTLE, 'cp932') as br:
         #file header
@@ -27,15 +34,25 @@ def I8toBMP(width, height, indices, color_table):
         br.write_uint32(0) #colors in color table
         br.write_uint32(0) #important colors
         #pixel data
-        br.write_bytes(pixels)
+        br.write_bytes(pixels_bytes)
 
         return br.buffer()
 
-def I4toBMP(width, height, indices, color_table):
+def I4toBMP(width, height, indices, colorPalette):
     
     #4 bit indexed
-    pixels = [(color_table[i & 0xF] + color_table[i >> 4]) for i in indices]
-    pixels = bytes(chain.from_iterable(pixels))
+    indices  = np.array(indices, dtype=np.uint8)
+    colorPalette = np.array(colorPalette, dtype=np.uint8)
+
+    # Use bitwise operations to extract lower and upper nibbles
+    lower_nibble = indices & 0xF
+    upper_nibble = indices >> 4
+
+    #Create pixels array using NumPy array operations
+    pixels = np.concatenate((colorPalette[lower_nibble], colorPalette[upper_nibble]), axis=1)
+
+    # Flatten pixels array and convert to bytes
+    pixels_bytes = pixels.flatten().tobytes()
 
     with BinaryReader(bytearray(), Endian.LITTLE, 'cp932') as br:
         br.write_str("BM")
@@ -54,6 +71,6 @@ def I4toBMP(width, height, indices, color_table):
         br.write_uint32(0)
         br.write_uint32(0)
         br.write_uint32(0)
-        br.write_bytes(pixels)
+        br.write_bytes(pixels_bytes)
 
         return br.buffer()

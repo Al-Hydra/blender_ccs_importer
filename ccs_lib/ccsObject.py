@@ -31,9 +31,9 @@ class ccsObject(BrStruct):
         br.write_uint32(self.extraIndex)
     
     def finalize(self, chunks):
-        self.parent = chunks[self.parentIndex]
-        self.model = chunks[self.modelIndex]
-        self.shadow = chunks[self.shadowIndex]
+        self.parent = chunks.get(self.parentIndex)
+        self.model = chunks.get(self.modelIndex)
+        self.shadow = chunks.get(self.shadowIndex)
 
 
 class ccsExternalObject(BrStruct):
@@ -59,10 +59,10 @@ class ccsExternalObject(BrStruct):
         self.referencedObjectName = indexTable.Names[self.referencedObjectIndex]
     
     def finalize(self, chunks):
-        self.parent = chunks[self.referencedParentIndex]
+        self.parent = chunks.get(self.referencedParentIndex)
         if self.parent:
             self.parentIndex = self.parent.index
-        self.object = chunks[self.referencedObjectIndex]
+        self.object = chunks.get(self.referencedObjectIndex)
         if self.object:
             self.objectIndex = self.object.index
 
@@ -72,7 +72,7 @@ class ccsAnmObject(BrStruct):
         self.index = 0
         self.name = ''
         self.path = ''
-        self.type = "AnmObject"
+        self.type = "AnimationObject"
         self.parentIndex = 0
         self.modelIndex = 0
         self.layerIndex = 0
@@ -83,8 +83,8 @@ class ccsAnmObject(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
         self.parentIndex = br.read_uint32()
+        self.modelIndex = br.read_uint32()
         self.layerIndex = br.read_uint32()
-        self.shadowIndex = br.read_uint32()
         self.extraIndex = br.read_uint32()
 
         self.index = 0

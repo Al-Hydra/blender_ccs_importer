@@ -18,4 +18,4 @@ class ccsMorph(BrStruct):
 
     
     def finalize(self, chunks):
-        self.target = chunks[self.targetIndex]
+        self.target = chunks.get(self.targetIndex)

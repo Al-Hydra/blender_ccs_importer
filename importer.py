@@ -9,7 +9,7 @@ from time import perf_counter, time
 from bpy_extras.io_utils import ImportHelper
 from .ccs_lib.ccsAnimation import *
 from .ccs_lib.ccsStream import *
-import os
+import os, zlib
 
 class ccsObjectProperties(bpy.types.PropertyGroup):
     name: StringProperty(
@@ -49,7 +49,7 @@ class ccsPropertyGroup(bpy.types.PropertyGroup):
         blenderChunk = bpy.context.scene.ccs_importer.objects.get(chunk.name, self.objects.add())
         blenderChunk.name = chunk.name
         blenderChunk.path = chunk.path
-        blenderChunk.parent = chunk.parent.name
+        blenderChunk.parent = chunk.parent.name if chunk.parent else ""
         blenderChunk.clump = clumpName
 
 
@@ -71,18 +71,55 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     target_skeleton: StringProperty(name = "Target Armature") #type: ignore
     slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
+    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
+    find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
+
     
     def execute(self, context):
 
         start_time = time()
 
-        for file in self.files:
-            
-            self.filepath = os.path.join(self.directory, file.name)
+        ccsFiles = []
 
-            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)))
+        if self.find_missing_chunks:
+
+            for file in self.files:
+                
+                self.filepath = os.path.join(self.directory, file.name)
+
+                ccsf = readCCS(self.filepath)
+
+                ccsFiles.append(ccsf)
+            
+            ccsf1 = ccsFiles[0]
+
+            all_chunks = {}
+
+            for ccs in ccsFiles[1:]:
+                for asset in ccs.assets.keys():
+                    if not asset.startswith("#"):
+                        for chunk in ccs.assets[asset]:
+                            all_chunks[chunk.name] = chunk
+            
+            for ext in ccsf1.sortedChunks["ExternalObject"]:
+                extObjName = ext.referencedObjectName[0]
+                if extObjName in all_chunks:
+                    ext.object = all_chunks[extObjName]
+            
+            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)), ccsf1)
 
             importer.read(context)
+        else:
+            for file in self.files:
+                
+                self.filepath = os.path.join(self.directory, file.name)
+
+                ccsf = readCCS(self.filepath)
+
+                importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)), ccsf)
+
+                importer.read(context)
+
 
         elapsed_s = "{:.2f}s".format(time() - start_time)
         self.report({'INFO'}, "CCS files imported in " + elapsed_s)
@@ -121,9 +158,11 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
             row.label(text = f"Old name example: {source_example[self.slice_count:]}")
             row = layout.row()
             row.label(text = f"New name example: {target_example[self.slice_count:]}")
-            
         
+        row = layout.row()
+        row.prop(self, "find_missing_chunks")
 
+            
 
 class DropCCS(Operator):
     """Allows CCS files to be dropped into the viewport to import them"""
@@ -141,18 +180,55 @@ class DropCCS(Operator):
     target_skeleton: StringProperty(name = "Target Armature") #type: ignore
     slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
+    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
+    find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
+
     
     def execute(self, context):
 
         start_time = time()
 
-        for file in self.files:
-            
-            self.filepath = os.path.join(self.directory, file.name)
+        ccsFiles = []
 
-            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)))
+        if self.find_missing_chunks:
+
+            for file in self.files:
+                
+                self.filepath = os.path.join(self.directory, file.name)
+
+                ccsf = readCCS(self.filepath)
+
+                ccsFiles.append(ccsf)
+            
+            ccsf1 = ccsFiles[0]
+
+            all_chunks = {}
+
+            for ccs in ccsFiles[1:]:
+                for asset in ccs.assets.keys():
+                    if not asset.startswith("#"):
+                        for chunk in ccs.assets[asset]:
+                            all_chunks[chunk.name] = chunk
+            
+            for ext in ccsf1.sortedChunks["ExternalObject"]:
+                extObjName = ext.referencedObjectName[0]
+                if extObjName in all_chunks:
+                    ext.object = all_chunks[extObjName]
+            
+            importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)), ccsf1)
 
             importer.read(context)
+        else:
+            for file in self.files:
+                
+                self.filepath = os.path.join(self.directory, file.name)
+
+                ccsf = readCCS(self.filepath)
+
+                importer = importCCS(self, self.filepath, self.as_keywords(ignore=("filter_glob",)), ccsf)
+
+                importer.read(context)
+
 
         elapsed_s = "{:.2f}s".format(time() - start_time)
         self.report({'INFO'}, "CCS files imported in " + elapsed_s)
@@ -175,52 +251,202 @@ class CCS_FH_import(bpy.types.FileHandler):
 
 
 class importCCS:
-    def __init__(self, operator: Operator, filepath, import_settings: dict):
+    def __init__(self, operator: Operator, filepath, import_settings: dict, ccsfile):
         self.operator = operator
         self.filepath = filepath
         for key, value in import_settings.items():
             setattr(self, key, value)
         
+        self.ccsf: ccsFile = ccsfile
+        
 
     def read(self, context):
         
-        self.ccsf: ccsFile = readCCS(self.filepath)
-
         self.collection = bpy.data.collections.new(self.ccsf.name)
         bpy.context.collection.children.link(self.collection)
 
-        for cmp in self.ccsf.chunks.values():
-            if cmp != None and cmp.type == 'Clump':
-                clump = bpy.data.armatures.get(cmp.name, self.makeClump(cmp))
+
+        #clumps
+        for cmpChunk in self.ccsf.sortedChunks["Clump"]:
+            if bpy.data.armatures.get(cmpChunk.name):
+                cmpChunk: ccsClump
+                armature = bpy.data.armatures.get(cmpChunk.name)
+                if len(cmpChunk.bones) > len(armature.bones):
+                    self.updateClump(cmpChunk, armature)
+            else:
+                self.makeClump(cmpChunk)
+        
+
+        #objects
+        for objChunk in self.ccsf.sortedChunks["Object"]:
+            bObject = bpy.data.objects.new(objChunk.name, None)
+            bObject.empty_display_size = 0.01
+            self.collection.objects.link(bObject)
+            objectClump = bpy.data.objects.get(objChunk.clump.name) if objChunk.clump else None
+            if objectClump:
+                bObject.parent = objectClump
+                bObject["clump"] = objChunk.clump.name
+            
+                if objChunk.parent:
+                    bObject.parent_type = "BONE"
+                    bObject.parent_bone = objChunk.parent.name
+                    bObject["parent"] = objChunk.parent.name
+            
+            if objChunk.model:
+                bObject["model"] = objChunk.model.name
+                self.makeModels(objChunk.model, objChunk.clump, objChunk.name)
 
 
-        for model in self.ccsf.chunks.values():
-            if model != None and model.type == 'Model':
-                if model.meshCount > 0 and model.modelType & 8:
-                    continue
-                    for i, mesh in enumerate(model.meshes):                        
-                        bm = bmesh.new()
+        #External Objects/ References
+        for extChunk in self.ccsf.sortedChunks["ExternalObject"]:
+            existRefObject = bpy.data.objects.get(extChunk.name)
+            if not existRefObject:
+                bObject = bpy.data.objects.new(extChunk.name, None)
+                bObject.empty_display_size = 0.01
+                self.collection.objects.link(bObject)
+                refObjectClump = bpy.data.objects.get(extChunk.clump.name) if extChunk.clump else None
+                if refObjectClump:
+                    bObject.parent = refObjectClump
+                    bObject["clump"] = extChunk.clump.name 
 
-                        verts = [bm.verts.new(v.position) for v in mesh.vertices]
-                        bm.verts.ensure_lookup_table()
-                        
-                        triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
-                        bm.faces.ensure_lookup_table()                        
+                    if extChunk.parent:
+                        bObject.parent_type = "BONE"
+                        bObject.parent_bone = extChunk.parent.name if extChunk.parent else ""
+                        bObject["parent"] = extChunk.parent.name
 
-                        blender_mesh = bpy.data.meshes.new(f'{model.name}')
-                        bm.to_mesh(blender_mesh)
+                if extChunk.object:
+                    #check if the object exist in blender
+                    existing_object = bpy.data.objects.get(extChunk.object.name)
+                    if existing_object: 
+                        existingObjectModel = existing_object.get("Model")
+                        bObject["model"] = existingObjectModel if existingObjectModel else None
+                    else:
+                        bObject["model"] = extChunk.object.model.name
+                    self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
+        
+        
+        #Cameras
+        for cam in self.ccsf.sortedChunks["Camera"]:
+            bCamera = bpy.data.cameras.get(cam.name)
+            if not bCamera:
+                bCamera = bpy.data.cameras.new(cam.name)
+                cameraObject = bpy.data.objects.new(cam.name, bCamera)
+                self.collection.objects.link(cameraObject)
 
-                        obj = bpy.data.objects.new(f'{model.name}', blender_mesh)
-                        self.collection.objects.link(obj)
+
+        #Animations
+        for anm in self.ccsf.sortedChunks["Animation"]:
+            action = self.makeAction(anm)
+        
+
+        #Stream Chunk / Frame Chunk / Scene
+        streamChunk: ccsStream = self.ccsf.stream
+        if streamChunk.frameCount > 1:
+            self.makeAction(streamChunk)
+
+
+
+    def makeModels(self, model, clump, parentBone):
+        if model != None and model.type == 'Model':
+            if model.meshCount > 0 and model.modelType & 8 and self.import_shadow:
+                for i, mesh in enumerate(model.meshes):
+                    bm = bmesh.new()
+
+                    verts = [bm.verts.new(v.position) for v in mesh.vertices]
+                    bm.verts.ensure_lookup_table()
+                    
+                    triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
+                    bm.faces.ensure_lookup_table()                        
+
+                    blender_mesh = bpy.data.meshes.new(f'{model.name}')
+                    bm.to_mesh(blender_mesh)
+
+                    obj = bpy.data.objects.new(f'{model.name}', blender_mesh)
+                    self.collection.objects.link(obj)
+            
+
+            elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
+                #Create the object and its mesh data
+                meshdata = bpy.data.meshes.new(f'{model.name}')
+                obj = bpy.data.objects.new(f'{model.name}', meshdata)
                 
+                #find the armature and add all the bones to a dict
+                armature = bpy.data.objects.get(clump.name)
+                bone_indices = {}
+                for i in range(len(armature.pose.bones)):
+                    obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                    bone_indices[armature.pose.bones[i].name] = i
+                
+                normals = []
 
-                elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
+                for i, mesh in enumerate(model.meshes):
+                    
+                    #add the mesh material
+                    mat = self.makeMaterial(model, mesh)
+                    mat_slot = obj.material_slots.get(mat.name)
+                    if mat_slot:
+                        matIndex = mat_slot.slot_index
+                    else:
+                        obj.data.materials.append(mat)
+                        mat_slot = obj.material_slots.get(mat.name)
+                        matIndex = mat_slot.slot_index
+
+                    #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
+                    meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals, clump, armature)                       
+
+                #meshdata.normals_split_custom_set_from_vertices(normals)
+    
+                self.collection.objects.link(obj)
+                obj.parent = armature
+
+                #add armature modifier
+                armature_modifier = obj.modifiers.new(name = f'{armature.name}', type = 'ARMATURE')
+                armature_modifier.object = armature
+
+            elif model.meshCount > 0 and model.modelType & 2:
+                    for mesh in model.meshes:
+                        meshdata = bpy.data.meshes.new(f'{model.name}')
+                        obj = bpy.data.objects.new(f'{model.name}', meshdata)
+
+                        bone_indices = {}
+                        parent_clump = bpy.data.objects.get(clump.name)
+                        for i in range(len(parent_clump.pose.bones)):
+                            obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
+                            bone_indices[parent_clump.pose.bones[i].name] = i
+
+                        meshdata = self.makeMeshTriList(meshdata, model, mesh, bone_indices, parent_clump)
+
+                        #add the mesh material
+                        mat = self.makeMaterial(model, mesh)
+                        obj.data.materials.append(mat)
+
+                        if model.clump:
+                            clump = bpy.data.objects.get(model.clump.name)
+                            parent = clump.pose.bones.get(model.parentBone.name)
+                            if parent:
+                                meshdata.transform(parent.matrix)
+
+                            obj.parent = clump
+                            
+                    #add armature modifier
+                    armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
+                    armature_modifier.object = parent_clump
+                    self.collection.objects.link(obj)
+
+            else:
+                #single bone
+                if model.meshCount > 0 and model.modelType < 2:
                     #Create the object and its mesh data
                     meshdata = bpy.data.meshes.new(f'{model.name}')
                     obj = bpy.data.objects.new(f'{model.name}', meshdata)
                     
                     #find the armature and add all the bones to a dict
-                    armature = bpy.data.objects.get(model.clump.name)
+                    armature = bpy.data.objects.get(clump.name)
+                    parent = armature.data.bones.get(parentBone)
+                    if not parent:
+                        print([b.name for b in armature.data.bones])
+                        breakpoint()
+
                     bone_indices = {}
                     for i in range(len(armature.pose.bones)):
                         obj.vertex_groups.new(name = armature.pose.bones[i].name)
@@ -228,8 +454,7 @@ class importCCS:
                     
                     normals = []
 
-                    for i, mesh in enumerate(model.meshes):
-                        
+                    for m, mesh in enumerate(model.meshes):
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
                         mat_slot = obj.material_slots.get(mat.name)
@@ -239,104 +464,16 @@ class importCCS:
                             obj.data.materials.append(mat)
                             mat_slot = obj.material_slots.get(mat.name)
                             matIndex = mat_slot.slot_index
+                        
+                        meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)
 
-                        #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
-                        meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals)                       
+                    obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                    obj.modifiers['Armature'].object = armature
 
-                    #meshdata.normals_split_custom_set_from_vertices(normals)
-      
-                    self.collection.objects.link(obj)
                     obj.parent = armature
 
-                    #add armature modifier
-                    armature_modifier = obj.modifiers.new(name = f'{armature.name}', type = 'ARMATURE')
-                    armature_modifier.object = armature
+                    self.collection.objects.link(obj)
 
-                elif model.meshCount > 0 and model.modelType & 2:
-                        for mesh in model.meshes:
-                            meshdata = bpy.data.meshes.new(f'{model.name}')
-                            obj = bpy.data.objects.new(f'{model.name}', meshdata)
-
-                            bone_indices = {}
-                            parent_clump = bpy.data.objects.get(model.clump.name)
-                            for i in range(len(parent_clump.pose.bones)):
-                                obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                                bone_indices[parent_clump.pose.bones[i].name] = i
-
-                            meshdata = self.makeMeshTriList(meshdata, model, mesh, bone_indices)
-
-                            #add the mesh material
-                            mat = self.makeMaterial(model, mesh)
-                            obj.data.materials.append(mat)
-
-                            if model.clump:
-                                clump = bpy.data.objects.get(model.clump.name)
-                                parent = clump.pose.bones.get(model.parentBone.name)
-                                if parent:
-                                    meshdata.transform(parent.matrix)
-
-                                obj.parent = clump
-                                
-                        #add armature modifier
-                        armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
-                        armature_modifier.object = parent_clump
-                        self.collection.objects.link(obj)
-
-                else:
-                    #single bone
-                    if model.meshCount > 0 and model.modelType < 2:
-                        #Create the object and its mesh data
-                        meshdata = bpy.data.meshes.new(f'{model.name}')
-                        obj = bpy.data.objects.new(f'{model.name}', meshdata)
-                        
-                        #find the armature and add all the bones to a dict
-                        armature = bpy.data.objects.get(model.clump.name)
-                        parent = armature.data.bones.get(model.parentBone.name)
-                        bone_indices = {}
-                        for i in range(len(armature.pose.bones)):
-                            obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                            bone_indices[armature.pose.bones[i].name] = i
-                        
-                        normals = []
-
-                        for m, mesh in enumerate(model.meshes):
-                            #add the mesh material
-                            mat = self.makeMaterial(model, mesh)
-                            mat_slot = obj.material_slots.get(mat.name)
-                            if mat_slot:
-                                matIndex = mat_slot.slot_index
-                            else:
-                                obj.data.materials.append(mat)
-                                mat_slot = obj.material_slots.get(mat.name)
-                                matIndex = mat_slot.slot_index
-                            
-                            meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)
-
-                        obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                        obj.modifiers['Armature'].object = armature
-
-                        obj.parent = armature
-
-                        self.collection.objects.link(obj)
-        
-        for camera in self.ccsf.chunks.values():
-            if camera.type == "Camera":
-                bCamera = bpy.data.cameras.get(camera.name)
-                if not bCamera:
-                    bCamera = bpy.data.cameras.new(camera.name)
-                    cameraObject = bpy.data.objects.new(camera.name, bCamera)
-                    self.collection.objects.link(cameraObject)
-
-        #anims
-        for anim in self.ccsf.chunks.values():
-            if anim == None:
-                continue
-            if anim.type == "Animation": #"ANM_1garslc12, ANM_ctu1atc0"
-                action = self.makeAction(anim)
-        
-        streamChunk: ccsStream = self.ccsf.stream
-        if streamChunk.frameCount > 1:
-            self.makeAction(streamChunk)
 
     def makeMaterial(self, model, mesh):
         ccs_material = mesh.material
@@ -448,33 +585,32 @@ class importCCS:
             bm.to_mesh(meshdata)
 
             return meshdata
-        
 
-    def makeMeshTriList(self, meshdata, model, mesh, bone_indices):
+
+    def makeMeshTriList(self, meshdata, model, mesh, bone_indices, parent_clump):
         bm = bmesh.new()
         uv_layer = bm.loops.layers.uv.new(f"UV")
         vgroup_layer = bm.verts.layers.deform.new("Weights")
 
         normals = []
 
+        bonesList = [b.name for b in parent_clump.data.bones]
+
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position
-            boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
-            boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
-            boneID3 = model.lookupList[ccsVertex.boneIDs[2]]
-            boneID4 = model.lookupList[ccsVertex.boneIDs[3]]
+            #boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
+            #boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
 
-            vertex_matrix1 = model.clump.bones[boneID1].matrix
-            vertex_matrix2 = model.clump.bones[boneID2].matrix
-            vertex_matrix3 = model.clump.bones[boneID3].matrix
-            vertex_matrix4 = model.clump.bones[boneID4].matrix
+            #vertex_matrix1 = model.clump.bones[boneID1].matrix
+            #vertex_matrix2 = model.clump.bones[boneID2].matrix
 
-            vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
+            vertex_matrix1 = parent_clump.data.bones[ccsVertex.boneIDs[0]]["matrix"]
+            vertex_matrix2 = parent_clump.data.bones[ccsVertex.boneIDs[1]]["matrix"]
+            
+            vp1 = (Matrix(vertex_matrix1) @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
             vn1 = Vector(ccsVertex.normals[0])
 
-            vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
-            vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
-            vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
+            vp2 = (Matrix(vertex_matrix2) @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
 
             #if ccsVertex.boneIDs[1] != "":
                 #vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
@@ -484,7 +620,7 @@ class importCCS:
             #vn2 = Vector((0,0,0))
             
 
-            bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
+            bmVertex = bm.verts.new(vp1 + vp2)
 
             #normals_vector = np.array(vn1 + vn 2)
             #normals_vector = normals_vector / np.linalg.norm(normals_vector)
@@ -494,17 +630,14 @@ class importCCS:
             bm.verts.index_update()
 
             #add vertex weights
-            boneID1 = bone_indices[model.lookupNames[ccsVertex.boneIDs[0]]]
-            boneID2 = bone_indices[model.lookupNames[ccsVertex.boneIDs[1]]]
+            boneID1 = bone_indices[bonesList[ccsVertex.boneIDs[0]]]
+            boneID2 = bone_indices[bonesList[ccsVertex.boneIDs[1]]]
 
             if ccsVertex.weights[0] == 1:
                     bmVertex[vgroup_layer][boneID1] = 1
             else:
                 bmVertex[vgroup_layer][boneID1] = ccsVertex.weights[0]
                 bmVertex[vgroup_layer][boneID2] = ccsVertex.weights[1]
-                bmVertex[vgroup_layer][boneID3] = ccsVertex.weights[2]
-                bmVertex[vgroup_layer][boneID4] = ccsVertex.weights[3]
-
             
         for i in range(len(mesh.triangleIndices)):
             flag = mesh.triangleFlags[i]
@@ -533,22 +666,24 @@ class importCCS:
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
     
-    def makeMeshMultiWeight(self, meshdata, model, mesh, bone_indices, matIndex, normals):        
+    def makeMeshMultiWeight(self, meshdata, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, armature): 
         bm = bmesh.new()
         vgroup_layer = bm.verts.layers.deform.new("Weights")
-        uv_layer = bm.loops.layers.uv.new(f"UV")        
+        uv_layer = bm.loops.layers.uv.new(f"UV")
+
+        bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
 
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position
-            boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
-            boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
-            boneID3 = model.lookupList[ccsVertex.boneIDs[2]]
-            boneID4 = model.lookupList[ccsVertex.boneIDs[3]]
+            boneID1 = bones[ccsVertex.boneIDs[0]]
+            boneID2 = bones[ccsVertex.boneIDs[1]]
+            boneID3 = bones[ccsVertex.boneIDs[2]]
+            boneID4 = bones[ccsVertex.boneIDs[3]]
 
-            vertex_matrix1 = model.clump.bones[boneID1].matrix
-            vertex_matrix2 = model.clump.bones[boneID2].matrix
-            vertex_matrix3 = model.clump.bones[boneID3].matrix
-            vertex_matrix4 = model.clump.bones[boneID4].matrix
+            vertex_matrix1 = Matrix(boneID1.matrix)
+            vertex_matrix2 = Matrix(boneID2.matrix)
+            vertex_matrix3 = Matrix(boneID3.matrix)
+            vertex_matrix4 = Matrix(boneID4.matrix)
 
             vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
             vn1 = Vector(ccsVertex.normals[0])
@@ -556,15 +691,6 @@ class importCCS:
             vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
             vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
             vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
-
-
-            '''if ccsVertex.boneIDs[1] != "":
-                vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
-                vn2 = Vector(ccsVertex.normals[1])
-            else:
-                vp2 = Vector((0,0,0))
-                vn2 = Vector((0,0,0))'''
-            
 
             bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
@@ -578,10 +704,10 @@ class importCCS:
             
 
             #add vertex groups with 0 weights
-            boneID1 = bone_indices[model.lookupNames[ccsVertex.boneIDs[0]]]
-            boneID2 = bone_indices[model.lookupNames[ccsVertex.boneIDs[1]]]
-            boneID3 = bone_indices[model.lookupNames[ccsVertex.boneIDs[2]]]
-            boneID4 = bone_indices[model.lookupNames[ccsVertex.boneIDs[3]]]
+            boneID1 = bone_indices[boneID1.name]
+            boneID2 = bone_indices[boneID2.name]
+            boneID3 = bone_indices[boneID3.name]
+            boneID4 = bone_indices[boneID4.name]
             
             bmVertex[vgroup_layer][boneID1] = 0
             bmVertex[vgroup_layer][boneID2] = 0
@@ -650,7 +776,7 @@ class importCCS:
             rotation = Euler((radians(x) for x in b.rot), "ZYX").to_quaternion()
 
             if b.parent:
-                b.matrix = b.parent.matrix @ Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
+                b.matrix = Matrix(b.parent.matrix) @ Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
             else:
                 b.matrix = Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
             
@@ -663,6 +789,52 @@ class importCCS:
             bone.parent = clump.edit_bones[b.parent.name] if b.parent else None
         
         bpy.ops.object.editmode_toggle()
+
+
+    def updateClump(self, cmp, armature):
+        armname = cmp.name
+
+        armature_object = self.collection.objects.get(armature.name)
+        if not armature_object:
+            armature_object = bpy.data.objects.new(armname, armature)
+            armature_object.show_in_front = True
+            
+            self.collection.objects.link(armature_object)
+
+
+        bpy.context.view_layer.objects.active = armature_object
+        bpy.ops.object.mode_set(mode = 'EDIT')
+        bpy.ops.armature.select_all(action='SELECT')
+        bpy.ops.armature.delete()
+
+        importerProp = bpy.context.scene.ccs_importer
+
+        for b in cmp.bones.values():
+            bone = armature.edit_bones.new(b.name)
+
+            bone_object = b.object
+
+            importerProp.add_object(bone_object, cmp.name)
+
+            bone.use_deform = True
+            bone.tail = Vector((0, 0.01, 0))
+            
+            rotation = Euler((radians(x) for x in b.rot), "ZYX").to_quaternion()
+
+            if b.parent:
+                b.matrix = Matrix(b.parent.matrix) @ Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
+            else:
+                b.matrix = Matrix.LocRotScale(Vector(b.pos) * 0.01, rotation, b.scale)
+            
+            bone.matrix = b.matrix
+            
+            bone["original_coords"] = [b.pos, b.rot, b.scale]
+            bone["rotation_quat"] = rotation
+            bone["matrix"] = b.matrix
+
+            bone.parent = armature.edit_bones[b.parent.name] if b.parent else None
+        
+        bpy.ops.object.mode_set(mode = 'OBJECT')
     
 
     def makeAction(self, anim):

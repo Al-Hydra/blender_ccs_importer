@@ -33,7 +33,7 @@ class CCSTypes(Enum):
     ModelVertexFrame = 0x0802
     ModelNormalFrame = 0x0803
     Clump = 0x0900
-    External = 0x0a00
+    ExternalObject = 0x0a00
     HitModel = 0x0b00
     BoundingBox = 0x0c00
     Effect = 0x0e00
@@ -48,12 +48,12 @@ class CCSTypes(Enum):
     Layer = 0x1700
     Shadow = 0x1800
     ShadowFrame = 0x1801
-    Morpher = 0x1900
+    Morph = 0x1900
     MorpherFrame = 0x1901
     MorphController = 0x1902
     StreamOutlineParam = 0x1a00
     OutlineFrame = 0x1a01
-    StreamCelShaderParam = 0x1b00
+    StreamCelShadeParam = 0x1b00
     CelShadeFrame = 0x1b01
     StreamToneShadeParam = 0x1c00
     ToneShadeFrame = 0x1c01

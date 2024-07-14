@@ -59,7 +59,7 @@ class ccsTexture(BrStruct):
             self.textureData = br.read_uint8(self.textureDataSize << 2)
 
     
-    def convertTexture(self):
+    def convertTexture(self, rawPixels = False):
         if self.btx:
             return bmxToDDS(self.btx)
         elif self.textureType == 0:
@@ -69,7 +69,7 @@ class ccsTexture(BrStruct):
         elif self.textureType == 0x14:
             return indexed4ToTGA(self.width, self.height, self.textureData, self.colorTable.paletteData)
         else:
-            return None    
+            return None
 
     def finalize(self, chunks):
         self.colorTable = chunks[self.clutIndex]

@@ -33,4 +33,4 @@ class ccsMaterial(BrStruct):
 
 
     def finalize(self, chunks):
-        self.texture = chunks[self.textureIndex]
+        self.texture = chunks.get(self.textureIndex)

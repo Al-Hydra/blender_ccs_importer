@@ -52,10 +52,13 @@ class Bone(BrStruct):
         
         self.name = bone_obj.name
         self.object = bone_obj
-        
-        if bone_obj.type != "":
+        if bone_obj.parent:
             self.parent = bones.get(bone_obj.parent.index)
+            self.parentObject = bone_obj.parent
         
-            if self.object.model:
-                self.object.model.clump = clump
-                self.object.model.parentBone = self
+        '''if bone_obj.type != "":
+            self.parent = bones.get(bone_obj.parent.index)'''
+        
+        if self.object.model:
+            self.object.model.clump = clump
+            self.object.model.parentBone = self

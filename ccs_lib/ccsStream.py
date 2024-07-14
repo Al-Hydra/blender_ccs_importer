@@ -19,8 +19,6 @@ class ccsStream(BrStruct):
         currentFrame = 0
         anmChunkReader(self, br, indexTable, version)
 
-        '''for objf in self.objectFrames:
-            objf.finalize(ccsChunks)'''
 
 class ccsStreamOutlineParam(BrStruct):
     def __init__(self):

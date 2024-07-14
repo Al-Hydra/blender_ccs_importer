@@ -17,7 +17,7 @@ from .ccsMorph import ccsMorph
 from .ccsLight import ccsLight
 from time import perf_counter
 from .Anms import *
-import gzip
+import gzip, zlib
 
 
 
@@ -37,8 +37,9 @@ class ccsFile(BrStruct):
         self.assets = {self.indexTable.Paths[i]: [] for i in range(self.indexTable.PathsCount)}
 
         #fill the chunks dict with values from the index table
-        self.chunks = {i: ccsChunk(i, self.indexTable.Names[i][0], "", self.indexTable.Names[i][1]) for  i in range(self.indexTable.NamesCount)}
-
+        #self.chunks = {self.indexTable.Names[i][0]: ccsChunk(i, self.indexTable.Names[i][0], "", self.indexTable.Names[i][1]) for i in range(self.indexTable.NamesCount)}
+        self.sortedChunks = {name: [] for name in CCSTypes.__members__.keys()}
+        self.sortedChunks[""] = []
         #read setup section
         chunkType = CCSTypes(br.read_uint16())
         br.seek(2, 1) #skip 0xCCCC bytes
@@ -65,11 +66,10 @@ class ccsFile(BrStruct):
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
-            
-            #add the chunk to the chunks dict
+
+            self.sortedChunks
+            self.sortedChunks[chunkData.type].append(chunkData)
             self.chunks[chunkData.index] = chunkData
-            asset = chunkData.path
-            self.assets[asset].append(chunkData)
 
             index += 1
         
@@ -79,6 +79,8 @@ class ccsFile(BrStruct):
         #finalize initialization
         for chunk in self.chunks.values():
             chunk.finalize(self.chunks)
+            asset = chunk.path
+            self.assets[asset].append(chunk)
 
 
 class ccsHeader(BrStruct):

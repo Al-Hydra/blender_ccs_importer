@@ -16,7 +16,7 @@ bl_info = {
     "author" : "HydraBladeZ",
     "description" : "A tool to import CCS files",
     "blender" : (4, 1, 0),
-    "version" : (1, 1, 4),
+    "version" : (1, 1, 5),
     "location" : "View3D",
     "warning" : "",
     "category" : "Import"
