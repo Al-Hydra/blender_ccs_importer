@@ -12,6 +12,7 @@ The following data types can be imported in blender:
 - Animations
 - Cameras
 - Morphs
+
 There are more formats supported by the CCS library but they can't be imported at the moment
 # TODO
 Export data from blender to CCS files
