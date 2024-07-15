@@ -49,7 +49,7 @@ class CCSTypes(Enum):
     Shadow = 0x1800
     ShadowFrame = 0x1801
     Morph = 0x1900
-    MorpherFrame = 0x1901
+    MorphFrame = 0x1901
     MorphController = 0x1902
     StreamOutlineParam = 0x1a00
     OutlineFrame = 0x1a01

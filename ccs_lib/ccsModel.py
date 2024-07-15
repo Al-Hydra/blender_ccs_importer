@@ -364,13 +364,6 @@ class ccsModel(BrStruct):
                     self.meshes.append(rigidmesh)
     
     def finalize(self, chunks):
-        if not self.lookupList and self.clump:
-            self.lookupList = self.clump.boneIndices
-        '''if self.clump and self.lookupList:
-                self.lookupList = [self.clump.boneIndices[i] for i in self.lookupList]
-        elif self.clump:
-            self.lookupList = self.clump.boneIndices'''
-        
         for mesh in self.meshes:
             mesh.finalize(chunks)
 

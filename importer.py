@@ -324,7 +324,16 @@ class importCCS:
                         bObject["model"] = extChunk.object.model.name
                     self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
         
-        
+
+        #morph chunks
+        for morph in self.ccsf.sortedChunks["Morph"]:
+            morph: ccsMorph
+            morphModel = bpy.data.objects.get(morph.targetName)
+
+            if morphModel:
+                morphModel.shape_key_add(name = "Basis")
+
+
         #Cameras
         for cam in self.ccsf.sortedChunks["Camera"]:
             bCamera = bpy.data.cameras.get(cam.name)
@@ -336,7 +345,7 @@ class importCCS:
 
         #Animations
         for anm in self.ccsf.sortedChunks["Animation"]:
-            action = self.makeAction(anm)
+            self.makeAction(anm)
         
 
         #Stream Chunk / Frame Chunk / Scene
@@ -378,8 +387,12 @@ class importCCS:
                     bone_indices[armature.pose.bones[i].name] = i
                 
                 normals = []
+                vCount = 0
+                bm = bmesh.new()
+                vgroup_layer = bm.verts.layers.deform.new("Weights")
+                uv_layer = bm.loops.layers.uv.new(f"UV")
 
-                for i, mesh in enumerate(model.meshes):
+                for mesh in model.meshes:
                     
                     #add the mesh material
                     mat = self.makeMaterial(model, mesh)
@@ -392,9 +405,13 @@ class importCCS:
                         matIndex = mat_slot.slot_index
 
                     #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
-                    meshdata = self.makeMeshMultiWeight(meshdata, model, mesh, bone_indices, matIndex, normals, clump, armature)                       
-
-                #meshdata.normals_split_custom_set_from_vertices(normals)
+                    self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, vCount)                       
+                    vCount = len(bm.verts)
+                
+                bm.to_mesh(meshdata)
+                bm.free()
+                
+                meshdata.normals_split_custom_set_from_vertices(normals)
     
                 self.collection.objects.link(obj)
                 obj.parent = armature
@@ -444,8 +461,7 @@ class importCCS:
                     armature = bpy.data.objects.get(clump.name)
                     parent = armature.data.bones.get(parentBone)
                     if not parent:
-                        print([b.name for b in armature.data.bones])
-                        breakpoint()
+                        parent = armature.data.bones[0]
 
                     bone_indices = {}
                     for i in range(len(armature.pose.bones)):
@@ -453,6 +469,8 @@ class importCCS:
                         bone_indices[armature.pose.bones[i].name] = i
                     
                     normals = []
+                    bm = bmesh.new()
+                    vCount = 0
 
                     for m, mesh in enumerate(model.meshes):
                         #add the mesh material
@@ -465,7 +483,12 @@ class importCCS:
                             mat_slot = obj.material_slots.get(mat.name)
                             matIndex = mat_slot.slot_index
                         
-                        meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals)
+                        bm = self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, vCount)
+                        vCount = len(bm.verts)
+                    
+                    bm.to_mesh(meshdata)
+                    
+                    meshdata.normals_split_custom_set_from_vertices(normals)
 
                     obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
                     obj.modifiers['Armature'].object = armature
@@ -529,8 +552,8 @@ class importCCS:
         return mat
 
 
-    def makeMeshSingleWeight(self, meshdata, mesh, parent, boneIndices, matIndex, normals):
-            bm = bmesh.new()
+    def makeMeshSingleWeight(self, bm, mesh, parent, boneIndices, matIndex, normals, vCount):
+            
 
             uv_layer = bm.loops.layers.uv.new(f"UV")
             color_layer = bm.loops.layers.color.new(f"Color")
@@ -541,14 +564,16 @@ class importCCS:
             #Triangles
             direction = 1
             for i, v in enumerate(mesh.vertices):
-                bmVertex = bm.verts.new(v.position)
 
+                #transform vertices by their parent bone
+                vp = Matrix(parent["matrix"]) @ Vector(v.position)
+                vn = Matrix(parent["matrix"]).to_3x3() @ Vector(v.normal)
+
+                bmVertex = bm.verts.new(vp)
                 bmVertex[vgroup_layer][boneID] = 1
                 
                 #normals must be normalized
-                normals_vector = np.array(v.normal)
-                normals_vector = normals_vector / np.linalg.norm(normals_vector)
-                normals.append(normals_vector)
+                normals.append(vn.normalized())
 
 
                 bm.verts.ensure_lookup_table()
@@ -563,28 +588,28 @@ class importCCS:
                 
                 if flag == 0:
                     if direction == 1:
-                        face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
+                        face = bm.faces.new((bm.verts[vCount + i-2], bm.verts[vCount + i-1], bm.verts[vCount + i]))
                     elif direction == -1:
-                        face = bm.faces.new((bm.verts[i], bm.verts[i-1], bm.verts[i-2]))
+                        face = bm.faces.new((bm.verts[vCount + i], bm.verts[vCount + i-1], bm.verts[vCount + i-2]))
                     
                     face.material_index = matIndex  
                     face.smooth = True
                     for loop in face.loops:
-                        loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
-                        loop[color_layer] = mesh.vertices[loop.vert.index].color
+                        loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
+                        loop[color_layer] = mesh.vertices[loop.vert.index - vCount].color
                     
                     #we need to flip the direction for the next face
                     direction *= -1
             
             bm.faces.ensure_lookup_table()
 
-            bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
+            #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
 
-            bm.transform(Matrix(parent["matrix"]))
-            bm.from_mesh(meshdata)
-            bm.to_mesh(meshdata)
+            #bm.transform(Matrix(parent["matrix"]))
+            #bm.from_mesh(meshdata)
+            #bm.to_mesh(meshdata)
 
-            return meshdata
+            return bm
 
 
     def makeMeshTriList(self, meshdata, model, mesh, bone_indices, parent_clump):
@@ -608,7 +633,7 @@ class importCCS:
             vertex_matrix2 = parent_clump.data.bones[ccsVertex.boneIDs[1]]["matrix"]
             
             vp1 = (Matrix(vertex_matrix1) @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
-            vn1 = Vector(ccsVertex.normals[0])
+            vn1 = Matrix(vertex_matrix1).to_3x3() @ Vector(ccsVertex.normals[0])
 
             vp2 = (Matrix(vertex_matrix2) @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
 
@@ -624,7 +649,7 @@ class importCCS:
 
             #normals_vector = np.array(vn1 + vn 2)
             #normals_vector = normals_vector / np.linalg.norm(normals_vector)
-            normals.append(vn1)   
+            normals.append(vn1.normalized())   
 
             bm.verts.ensure_lookup_table()
             bm.verts.index_update()
@@ -666,12 +691,12 @@ class importCCS:
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
     
-    def makeMeshMultiWeight(self, meshdata, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, armature): 
-        bm = bmesh.new()
-        vgroup_layer = bm.verts.layers.deform.new("Weights")
-        uv_layer = bm.loops.layers.uv.new(f"UV")
-
-        bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
+    def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, vCount): 
+        
+        if not model.lookupList:
+            bones = [bone for bone in clump.bones.values()]
+        else:
+            bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
 
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position
@@ -685,23 +710,26 @@ class importCCS:
             vertex_matrix3 = Matrix(boneID3.matrix)
             vertex_matrix4 = Matrix(boneID4.matrix)
 
+            #positions
             vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
-            vn1 = Vector(ccsVertex.normals[0])
-
             vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
             vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
             vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
 
+            #normals
+            vn1 = vertex_matrix1.to_3x3() @ Vector(ccsVertex.normals[0]) 
+            #vn2 = vertex_matrix2.to_3x3() @ Vector(ccsVertex.normals[1])
+            #vn3 = vertex_matrix3.to_3x3() @ Vector(ccsVertex.normals[2])
+            #vn4 = vertex_matrix4.to_3x3() @ Vector(ccsVertex.normals[3])
+            normal = vn1 #+ vn2 + vn3 + vn4
+
             bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
             #normals must be normalized
-            '''normals_vector = np.array(vn1 + vn2)
-            normals_vector = normals_vector / np.linalg.norm(normals_vector)
-            normals.append(normals_vector)'''
+            normals.append(normal.normalized())
             
             bm.verts.ensure_lookup_table()
-            bm.verts.index_update()
-            
+            bm.verts.index_update()            
 
             #add vertex groups with 0 weights
             boneID1 = bone_indices[boneID1.name]
@@ -728,24 +756,21 @@ class importCCS:
             
             if flag == 0:
                 if direction == 1:
-                    face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
+                    face = bm.faces.new((bm.verts[vCount + (i-2)], bm.verts[vCount + (i-1)], bm.verts[vCount + i]))
                 elif direction == -1:
-                    face = bm.faces.new((bm.verts[i], bm.verts[i-1], bm.verts[i-2]))
+                    face = bm.faces.new((bm.verts[vCount + i], bm.verts[vCount + i-1], bm.verts[vCount + i-2]))
                 face.material_index = matIndex
                 face.smooth = True
                 for loop in face.loops:
-                    loop[uv_layer].uv = mesh.vertices[loop.vert.index].UV
+                    loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
                     #loop[color_layer] = mesh.vertices[loop.vert.index].color
                 #we need to flip the direction for the next face
                 direction *= -1
         
         #clean up the mesh
-        bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
+        #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
 
-        bm.from_mesh(meshdata)
-        bm.to_mesh(meshdata)
 
-        return meshdata
 
 
     def makeClump(self, cmp):
@@ -988,6 +1013,32 @@ class importCCS:
             
             data_path = f'{bone_path}.{"scale"}'
             self.insertFrames(action, group_name, data_path, scales, 3)
+        
+
+        for morphF in anim.morphs:
+            morphF: morphFrame
+            sourceModel = f"MDL_{morphF.morph[4:]}"
+            if not sourceModel:
+                continue
+            sourceModelBlender = bpy.data.objects.get(sourceModel)
+            
+            if sourceModelBlender:
+                #check if a Basis shape key exists
+                basisShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get("Basis")
+                if not basisShapeKey:
+                    sourceModelBlender.shape_key_add(name = "Basis")
+                
+                for target in morphF.morphTargets.keys():
+                    #check if the source model has a shape key for this target
+                    targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
+                    if not targetShapeKey:
+                        targetShapeKey = sourceModelBlender.shape_key_add(name = target)
+                        targetModelBlender = bpy.data.objects.get(target)
+
+                        if targetModelBlender:
+                            for i in range(len(targetModelBlender.data.vertices)):
+                                targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+
         
 
         for cam in anim.cameras.keys():

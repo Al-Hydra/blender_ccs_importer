@@ -11,6 +11,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.materialControllers = []
     self.objects = {}
     self.materials = {}
+    self.morphs = []
     while not currentFrame < 0:
         #read chunk type
         #print(hex(br.pos()))
@@ -46,6 +47,15 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         elif chunkType == CCSTypes.MorphController:
             morphCtrl = br.read_struct(morphController, None, currentFrame)
             self.morphControllers.append(morphCtrl)
+        
+        elif chunkType == CCSTypes.MorphFrame:
+            morphF: morphFrame = br.read_struct(morphFrame, None, currentFrame, indexTable)
+            self.morphs.append(morphF)
+            '''for morphT, value in morphF.morphTargets.items():
+                if not self.morphs.get(morphT):
+                    self.morphs[morphT] = {morphF.frame: value}
+                else:
+                    self.morphs[morphT][morphF.frame] = value'''
 
         elif chunkType == CCSTypes.MaterialController:
             materialCtrl = br.read_struct(materialController, None, currentFrame, indexTable)
@@ -185,8 +195,7 @@ class morphController(BrStruct):
 
 
     def finalize(self, chunks):
-        self.morph = chunks[self.morphIndex]
-        self.target = chunks[self.targetIndex]
+        self.morph = chunks.get(self.morphIndex)
 
 
 class morphTarget(BrStruct):
@@ -196,6 +205,27 @@ class morphTarget(BrStruct):
         ctrlFlags = br.read_uint32()
 
         self.values = readFloat(br, morphValues, ctrlFlags, currentFrame)
+
+
+class morphFrame(BrStruct):
+    def __init__(self):
+        self.morph = None
+        self.target = None
+        self.frame = 0
+        self.morphTargets = {}
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.morphIndex = br.read_uint32()
+        self.morph = indexTable.Names[self.morphIndex][0]
+        self.targetsCount = br.read_uint32()
+        
+        self.morphTargets = {indexTable.Names[br.read_uint32()][0] : br.read_float() for i in range(self.targetsCount)}
+        
+        self.frame = currentFrame
+
+
+    def finalize(self, chunks):
+        pass
 
 
 class frame(BrStruct):
