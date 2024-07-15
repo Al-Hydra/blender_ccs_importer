@@ -293,7 +293,9 @@ class importCCS:
     def read(self, context):
         
         self.collection = bpy.data.collections.new(self.ccsf.name)
+        self.emptiesCollection = bpy.data.collections.new(f"{self.ccsf.name} Empties")
         bpy.context.collection.children.link(self.collection)
+        self.collection.children.link(self.emptiesCollection)
 
 
         #clumps
@@ -321,15 +323,15 @@ class importCCS:
             for objChunk in self.ccsf.sortedChunks["Object"]:
                 bObject = bpy.data.objects.new(objChunk.name, None)
                 bObject.empty_display_size = 0.01
-                self.collection.objects.link(bObject)
+                self.emptiesCollection.objects.link(bObject)
                 objectClump = bpy.data.objects.get(objChunk.clump.name) if objChunk.clump else None
                 if objectClump:
-                    bObject.parent = objectClump
+                    #bObject.parent = objectClump
                     bObject["clump"] = objChunk.clump.name
                 
                     if objChunk.parent:
-                        bObject.parent_type = "BONE"
-                        bObject.parent_bone = objChunk.parent.name
+                        #bObject.parent_type = "BONE"
+                        #bObject.parent_bone = objChunk.parent.name
                         bObject["parent"] = objChunk.parent.name
                 
                 if objChunk.model:
@@ -343,15 +345,15 @@ class importCCS:
                 if not existRefObject:
                     bObject = bpy.data.objects.new(extChunk.name, None)
                     bObject.empty_display_size = 0.01
-                    self.collection.objects.link(bObject)
+                    self.emptiesCollection.objects.link(bObject)
                     refObjectClump = bpy.data.objects.get(extChunk.clump.name) if extChunk.clump else None
                     if refObjectClump:
-                        bObject.parent = refObjectClump
+                        #bObject.parent = refObjectClump
                         bObject["clump"] = extChunk.clump.name 
 
                         if extChunk.parent:
-                            bObject.parent_type = "BONE"
-                            bObject.parent_bone = extChunk.parent.name if extChunk.parent else ""
+                            #bObject.parent_type = "BONE"
+                            #bObject.parent_bone = extChunk.parent.name if extChunk.parent else ""
                             bObject["parent"] = extChunk.parent.name
 
                     if extChunk.object:
