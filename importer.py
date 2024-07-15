@@ -73,6 +73,12 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
     import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
     find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
+    import_models: BoolProperty(name = "Import Models", default = True) #type: ignore
+    import_animations: BoolProperty(name = "Import Animations", default = True) #type: ignore
+    import_morphs: BoolProperty(name = "Import Morphs", default = True) #type: ignore
+    import_cameras: BoolProperty(name = "Import Cameras", default = True) #type: ignore
+    import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
+    import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -130,6 +136,23 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
         layout = self.layout
 
         row = layout.row()
+        row.prop(self, "import_models")
+        row = layout.row()
+        row.prop(self, "import_animations")
+
+        if self.import_animations:
+            row = layout.row()
+            row.prop(self, "import_morphs")
+        
+        row = layout.row()
+        row.prop(self, "import_cameras")
+        row = layout.row()
+        row.prop(self, "import_all_textures")
+        row = layout.row()
+        row.prop(self, "import_stream")
+        
+
+        row = layout.row()
         row.prop(self, "swap_names")
         row = layout.row()
         if self.swap_names:
@@ -162,6 +185,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
         row = layout.row()
         row.prop(self, "find_missing_chunks")
 
+
             
 
 class DropCCS(Operator):
@@ -182,6 +206,12 @@ class DropCCS(Operator):
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
     import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
     find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
+    import_models: BoolProperty(name = "Import Models", default = True) #type: ignore
+    import_animations: BoolProperty(name = "Import Animations", default = True) #type: ignore
+    import_morphs: BoolProperty(name = "Import Morphs", default = True) #type: ignore
+    import_cameras: BoolProperty(name = "Import Cameras", default = True) #type: ignore
+    import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
+    import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -276,82 +306,93 @@ class importCCS:
             else:
                 self.makeClump(cmpChunk)
         
+        if self.import_all_textures:
+            for tex in self.ccsf.sortedChunks["Texture"]:
+                if not bpy.data.images.get(tex.name) and tex.textureData:
+                    texture = tex.convertTexture()
 
-        #objects
-        for objChunk in self.ccsf.sortedChunks["Object"]:
-            bObject = bpy.data.objects.new(objChunk.name, None)
-            bObject.empty_display_size = 0.01
-            self.collection.objects.link(bObject)
-            objectClump = bpy.data.objects.get(objChunk.clump.name) if objChunk.clump else None
-            if objectClump:
-                bObject.parent = objectClump
-                bObject["clump"] = objChunk.clump.name
-            
-                if objChunk.parent:
-                    bObject.parent_type = "BONE"
-                    bObject.parent_bone = objChunk.parent.name
-                    bObject["parent"] = objChunk.parent.name
-            
-            if objChunk.model:
-                bObject["model"] = objChunk.model.name
-                self.makeModels(objChunk.model, objChunk.clump, objChunk.name)
+                    img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                    img.pack(data=bytes(texture), data_len=len(texture))
+                    img.source = 'FILE'
 
-
-        #External Objects/ References
-        for extChunk in self.ccsf.sortedChunks["ExternalObject"]:
-            existRefObject = bpy.data.objects.get(extChunk.name)
-            if not existRefObject:
-                bObject = bpy.data.objects.new(extChunk.name, None)
+        
+        if self.import_models:
+            #objects
+            for objChunk in self.ccsf.sortedChunks["Object"]:
+                bObject = bpy.data.objects.new(objChunk.name, None)
                 bObject.empty_display_size = 0.01
                 self.collection.objects.link(bObject)
-                refObjectClump = bpy.data.objects.get(extChunk.clump.name) if extChunk.clump else None
-                if refObjectClump:
-                    bObject.parent = refObjectClump
-                    bObject["clump"] = extChunk.clump.name 
-
-                    if extChunk.parent:
+                objectClump = bpy.data.objects.get(objChunk.clump.name) if objChunk.clump else None
+                if objectClump:
+                    bObject.parent = objectClump
+                    bObject["clump"] = objChunk.clump.name
+                
+                    if objChunk.parent:
                         bObject.parent_type = "BONE"
-                        bObject.parent_bone = extChunk.parent.name if extChunk.parent else ""
-                        bObject["parent"] = extChunk.parent.name
+                        bObject.parent_bone = objChunk.parent.name
+                        bObject["parent"] = objChunk.parent.name
+                
+                if objChunk.model:
+                    bObject["model"] = objChunk.model.name
+                    self.makeModels(objChunk.model, objChunk.clump, objChunk.name)
 
-                if extChunk.object:
-                    #check if the object exist in blender
-                    existing_object = bpy.data.objects.get(extChunk.object.name)
-                    if existing_object: 
-                        existingObjectModel = existing_object.get("Model")
-                        bObject["model"] = existingObjectModel if existingObjectModel else None
-                    else:
-                        bObject["model"] = extChunk.object.model.name
-                    self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
+
+            #External Objects/ References
+            for extChunk in self.ccsf.sortedChunks["ExternalObject"]:
+                existRefObject = bpy.data.objects.get(extChunk.name)
+                if not existRefObject:
+                    bObject = bpy.data.objects.new(extChunk.name, None)
+                    bObject.empty_display_size = 0.01
+                    self.collection.objects.link(bObject)
+                    refObjectClump = bpy.data.objects.get(extChunk.clump.name) if extChunk.clump else None
+                    if refObjectClump:
+                        bObject.parent = refObjectClump
+                        bObject["clump"] = extChunk.clump.name 
+
+                        if extChunk.parent:
+                            bObject.parent_type = "BONE"
+                            bObject.parent_bone = extChunk.parent.name if extChunk.parent else ""
+                            bObject["parent"] = extChunk.parent.name
+
+                    if extChunk.object:
+                        #check if the object exist in blender
+                        existing_object = bpy.data.objects.get(extChunk.object.name)
+                        if existing_object: 
+                            existingObjectModel = existing_object.get("Model")
+                            bObject["model"] = existingObjectModel if existingObjectModel else None
+                        else:
+                            bObject["model"] = extChunk.object.model.name
+                        self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
         
 
-        #morph chunks
-        for morph in self.ccsf.sortedChunks["Morph"]:
-            morph: ccsMorph
-            morphModel = bpy.data.objects.get(morph.targetName)
+        if self.import_morphs:
+            #morph chunks
+            for morph in self.ccsf.sortedChunks["Morph"]:
+                morph: ccsMorph
+                morphModel = bpy.data.objects.get(morph.targetName)
 
-            if morphModel:
-                morphModel.shape_key_add(name = "Basis")
+                if morphModel:
+                    morphModel.shape_key_add(name = "Basis")
 
+        if self.import_cameras:
+            #Cameras
+            for cam in self.ccsf.sortedChunks["Camera"]:
+                bCamera = bpy.data.cameras.get(cam.name)
+                if not bCamera:
+                    bCamera = bpy.data.cameras.new(cam.name)
+                    cameraObject = bpy.data.objects.new(cam.name, bCamera)
+                    self.collection.objects.link(cameraObject)
 
-        #Cameras
-        for cam in self.ccsf.sortedChunks["Camera"]:
-            bCamera = bpy.data.cameras.get(cam.name)
-            if not bCamera:
-                bCamera = bpy.data.cameras.new(cam.name)
-                cameraObject = bpy.data.objects.new(cam.name, bCamera)
-                self.collection.objects.link(cameraObject)
-
-
-        #Animations
-        for anm in self.ccsf.sortedChunks["Animation"]:
-            self.makeAction(anm)
+        if self.import_animations:
+            #Animations
+            for anm in self.ccsf.sortedChunks["Animation"]:
+                self.makeAction(anm)
         
-
-        #Stream Chunk / Frame Chunk / Scene
-        streamChunk: ccsStream = self.ccsf.stream
-        if streamChunk.frameCount > 1:
-            self.makeAction(streamChunk)
+        if self.import_stream:
+            #Stream Chunk / Frame Chunk / Scene
+            streamChunk: ccsStream = self.ccsf.stream
+            if streamChunk.frameCount > 1:
+                self.makeAction(streamChunk)
 
 
 
@@ -1002,30 +1043,39 @@ class importCCS:
             data_path = f'{bone_path}.{"scale"}'
             self.insertFrames(action, group_name, data_path, scales, 3)
         
-
-        for morphF in anim.morphs:
-            morphF: morphFrame
-            sourceModel = f"MDL_{morphF.morph[4:]}"
-            if not sourceModel:
-                continue
-            sourceModelBlender = bpy.data.objects.get(sourceModel)
-            
-            if sourceModelBlender:
-                #check if a Basis shape key exists
-                basisShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get("Basis")
-                if not basisShapeKey:
-                    sourceModelBlender.shape_key_add(name = "Basis")
+        
+        if self.import_morphs:
+            for morphF in anim.morphs:
+                morphF: morphFrame
+                sourceModel = f"MDL_{morphF[4:]}"
+                if not sourceModel:
+                    continue
+                sourceModelBlender = bpy.data.objects.get(sourceModel)
                 
-                for target in morphF.morphTargets.keys():
-                    #check if the source model has a shape key for this target
-                    targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
-                    if not targetShapeKey:
-                        targetShapeKey = sourceModelBlender.shape_key_add(name = target)
-                        targetModelBlender = bpy.data.objects.get(target)
+                if sourceModelBlender:
+                    #check if a Basis shape key exists
+                    basisShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get("Basis")
+                    if not basisShapeKey:
+                        sourceModelBlender.shape_key_add(name = "Basis")
+                    
+                    sourceModelBlender.animation_data_create()
+                    sourceModelBlender.animation_data.action = action
+                    
+                    for target in anim.morphs[morphF].keys():
+                        #check if the source model has a shape key for this target
+                        targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
+                        if not targetShapeKey:
+                            targetShapeKey = sourceModelBlender.shape_key_add(name = target)
+                            targetModelBlender = bpy.data.objects.get(target)
 
-                        if targetModelBlender:
-                            for i in range(len(targetModelBlender.data.vertices)):
-                                targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                            if targetModelBlender:
+                                for i in range(len(targetModelBlender.data.vertices)):
+                                    targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                    
+
+                                data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
+
+                                self.insertFrames(action, targetShapeKey.name, data_path, anim.morphs[morphF][targetShapeKey.name], 1)
 
         
 

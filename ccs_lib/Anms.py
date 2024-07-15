@@ -11,7 +11,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.materialControllers = []
     self.objects = {}
     self.materials = {}
-    self.morphs = []
+    self.morphs = {}
     while not currentFrame < 0:
         #read chunk type
         #print(hex(br.pos()))
@@ -50,12 +50,14 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         
         elif chunkType == CCSTypes.MorphFrame:
             morphF: morphFrame = br.read_struct(morphFrame, None, currentFrame, indexTable)
-            self.morphs.append(morphF)
-            '''for morphT, value in morphF.morphTargets.items():
-                if not self.morphs.get(morphT):
-                    self.morphs[morphT] = {morphF.frame: value}
+            if not self.morphs.get(morphF.morph):
+                self.morphs[morphF.morph] = {}
+            
+            for morphT, value in morphF.morphTargets.items():
+                if not self.morphs[morphF.morph].get(morphT):
+                    self.morphs[morphF.morph][morphT] = {morphF.frame: [value]}
                 else:
-                    self.morphs[morphT][morphF.frame] = value'''
+                    self.morphs[morphF.morph][morphT][morphF.frame] = [value]
 
         elif chunkType == CCSTypes.MaterialController:
             materialCtrl = br.read_struct(materialController, None, currentFrame, indexTable)
