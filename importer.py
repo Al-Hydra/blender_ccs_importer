@@ -470,6 +470,9 @@ class importCCS:
                     
                     normals = []
                     bm = bmesh.new()
+                    uv_layer = bm.loops.layers.uv.new(f"UV")
+                    color_layer = bm.loops.layers.color.new(f"Color")
+                    vgroup_layer = bm.verts.layers.deform.new("Weights")
                     vCount = 0
 
                     for m, mesh in enumerate(model.meshes):
@@ -483,7 +486,7 @@ class importCCS:
                             mat_slot = obj.material_slots.get(mat.name)
                             matIndex = mat_slot.slot_index
                         
-                        bm = self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, vCount)
+                        self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, uv_layer, color_layer, vgroup_layer, vCount)
                         vCount = len(bm.verts)
                     
                     bm.to_mesh(meshdata)
@@ -552,12 +555,7 @@ class importCCS:
         return mat
 
 
-    def makeMeshSingleWeight(self, bm, mesh, parent, boneIndices, matIndex, normals, vCount):
-            
-
-            uv_layer = bm.loops.layers.uv.new(f"UV")
-            color_layer = bm.loops.layers.color.new(f"Color")
-            vgroup_layer = bm.verts.layers.deform.new("Weights")
+    def makeMeshSingleWeight(self, bm, mesh, parent, boneIndices, matIndex, normals,uv_layer, color_layer, vgroup_layer, vCount):
 
             boneID = boneIndices[parent.name]
 
@@ -603,14 +601,6 @@ class importCCS:
             
             bm.faces.ensure_lookup_table()
 
-            #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
-
-            #bm.transform(Matrix(parent["matrix"]))
-            #bm.from_mesh(meshdata)
-            #bm.to_mesh(meshdata)
-
-            return bm
-
 
     def makeMeshTriList(self, meshdata, model, mesh, bone_indices, parent_clump):
         bm = bmesh.new()
@@ -647,8 +637,6 @@ class importCCS:
 
             bmVertex = bm.verts.new(vp1 + vp2)
 
-            #normals_vector = np.array(vn1 + vn 2)
-            #normals_vector = normals_vector / np.linalg.norm(normals_vector)
             normals.append(vn1.normalized())   
 
             bm.verts.ensure_lookup_table()
@@ -721,7 +709,7 @@ class importCCS:
             #vn2 = vertex_matrix2.to_3x3() @ Vector(ccsVertex.normals[1])
             #vn3 = vertex_matrix3.to_3x3() @ Vector(ccsVertex.normals[2])
             #vn4 = vertex_matrix4.to_3x3() @ Vector(ccsVertex.normals[3])
-            normal = vn1 #+ vn2 + vn3 + vn4
+            normal = vn1 #+ vn2 + vn3 + vn4  #only the first normals vector is needed
 
             bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
 
