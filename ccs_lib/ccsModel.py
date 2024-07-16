@@ -45,7 +45,7 @@ class RigidMesh(BrStruct):
 
     
     def finalize(self, chunks):
-        self.material = chunks[self.materialIndex]
+        self.material = chunks.get(self.materialIndex)
         
         
 
@@ -201,7 +201,7 @@ class DeformableMesh(BrStruct):
                 
 
     def finalize(self, chunks):
-        self.material = chunks[self.materialID]
+        self.material = chunks.get(self.materialID)
 
 
 class unkMesh(BrStruct):
@@ -295,8 +295,8 @@ class unkMesh(BrStruct):
 
     
     def finalize(self, chunks):
-        self.material = chunks[self.materialID]
-        self.clump = chunks[self.clumpIndex]
+        self.material = chunks.get(self.materialID)
+        self.clump = chunks.get(self.clumpIndex)
         self.lookupList = self.clump.boneIndices
 
 

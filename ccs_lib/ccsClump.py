@@ -58,8 +58,6 @@ class Bone(BrStruct):
         
         '''if bone_obj.type != "":
             self.parent = bones.get(bone_obj.parent.index)'''
-        if not hasattr(self.object, "model"):
-            breakpoint()
         if self.object.model:
             self.object.model.clump = clump
             self.object.model.parentBone = self

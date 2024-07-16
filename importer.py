@@ -550,6 +550,11 @@ class importCCS:
 
     def makeMaterial(self, model, mesh):
         ccs_material = mesh.material
+        if not ccs_material:
+            mat = bpy.data.materials.get("ccsMaterial").copy()
+            mat["uvOffset"] = [0, 0, 1, 1]
+            return mat
+
         mat = bpy.data.materials.get(f'{model.name}_{ccs_material.name}')
         if not mat:
             #check if ccsMaterial exists already
