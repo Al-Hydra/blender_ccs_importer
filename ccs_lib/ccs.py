@@ -15,6 +15,7 @@ from .ccsCamera import ccsCamera
 from .ccsAnimation import ccsAnimation
 from .ccsMorph import ccsMorph
 from .ccsLight import ccsLight
+from .ccsEffect import ccsEffect
 from time import perf_counter
 from .Anms import *
 import gzip, zlib
@@ -64,7 +65,7 @@ class ccsFile(BrStruct):
             if chunkClass:
                 chunkData = br.read_struct(chunkClass, None, self.indexTable, self.version)
             else:
-                print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
+                print(f"Unknown chunk type {chunkType} at {hex(br.pos())}, index {index}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
 
             self.sortedChunks
@@ -123,6 +124,8 @@ class ccsChunk(BrStruct):
     
     def __br_read__(self, br: BinaryReader, indexTable, size, version):
         self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
+        self.path = indexTable.Names[self.index][1]
         self.data = br.read_bytes(size - 4)
     def finalize(self, chunks):
         pass

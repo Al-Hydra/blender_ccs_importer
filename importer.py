@@ -364,7 +364,9 @@ class importCCS:
                             bObject["model"] = existingObjectModel if existingObjectModel else None
                         else:
                             bObject["model"] = extChunk.object.model.name
-                        self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
+                        
+                        if extChunk.clump:
+                            self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
         
 
         if self.import_morphs:
@@ -501,6 +503,8 @@ class importCCS:
                     obj = bpy.data.objects.new(f'{model.name}', meshdata)
                     
                     #find the armature and add all the bones to a dict
+                    if not hasattr(clump, "name"):
+                        breakpoint()
                     armature = bpy.data.objects.get(clump.name)
                     parent = armature.data.bones.get(parentBone)
                     if not parent:

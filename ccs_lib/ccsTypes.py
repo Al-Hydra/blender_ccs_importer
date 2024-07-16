@@ -103,7 +103,7 @@ ccsDict = {
     0x0a00: "ccsExternalObject",
     0x0b00: "ccsHit",
     0x0c00: "ccsBox",
-    0x0e00: "",
+    0x0e00: "ccsEffect",
     0x0d00: "",
     0x0d80: "",
     0x0d90: "",
