@@ -575,6 +575,7 @@ class importCCS:
                 mat = bpy.data.materials["ccsMaterial"].copy()
             else:
                 mat = mat.copy()
+                mat["uvOffset"] = [0, 0, 1, 1]
             
             mat.name = f'{model.name}_{ccs_material.name}'
             
@@ -594,15 +595,11 @@ class importCCS:
                 texture_node = mat.node_tree.nodes["ccsTexture"]
                 texture_node.image = img
 
-                '''ccsShader_node = mat.node_tree.nodes["ccsShader"]
-                ccsShader_node.inputs["X Offset"].default_value = ccs_material.offsetX
-                ccsShader_node.inputs["Y Offset"].default_value = ccs_material.offsetY
-                ccsShader_node.inputs["X Scale"].default_value = ccs_material.scaleX
-                ccsShader_node.inputs["Y Scale"].default_value = ccs_material.scaleY'''
-
                 mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
         else:
             mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+        
+        mat.use_backface_culling = True
             
         return mat
 
