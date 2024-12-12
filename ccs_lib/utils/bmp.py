@@ -1,4 +1,4 @@
-import zlib, struct, time, numpy as np
+import numpy as np
 from .PyBinaryReader.binary_reader import *
 
 

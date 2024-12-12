@@ -32,9 +32,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
             objF = br.read_struct(objectFrame, None, currentFrame, indexTable)
             obj = self.objects.get(objF.name)
             if not obj:
-                self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale)}
+                self.objects[objF.name] = {currentFrame: (objF.position, objF.rotation, objF.scale, objF.opacity)}
             else:
-                self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale)
+                self.objects[objF.name][currentFrame] = (objF.position, objF.rotation, objF.scale, objF.opacity)
         
         elif chunkType == CCSTypes.CameraFrame:
             camF = br.read_struct(cameraFrame, None, currentFrame, indexTable)
@@ -247,8 +247,8 @@ class objectFrame(BrStruct):
         self.position = [0,0,0]
         self.rotation = [0,0,0]
         self.scale = [1,1,1]
+        self.has_model = 0
         self.opacity = 1
-        self.unk = 0
 
     def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
         self.objectIndex = br.read_uint32()
@@ -280,9 +280,9 @@ class objectFrame(BrStruct):
             self.scale[2] = br.read_float()
 
         if self.ctrlFlags & 400 == 0:
-            self.unk = br.read_float()
+            self.opacity = br.read_float()
         if self.ctrlFlags & 800 == 0:
-            self.opacity = br.read_uint32()
+            self.has_model = br.read_uint32()
 
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]

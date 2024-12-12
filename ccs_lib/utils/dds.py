@@ -421,13 +421,4 @@ class Misc_Flag2(IntEnum):
     ALPHA_MODE_OPAQUE = 3
     ALPHA_MODE_CUSTOM = 4
 
-
-if __name__ == '__main__':
-    path = r"C:\Users\Ali\Documents\GitHub\nut-tools\dist\adv_exam_brt_I1.dds"
-    with open(path, 'rb') as f:
-        data = f.read()
-    with BinaryReader(data, Endian.BIG) as br:
-        dds: DDS = br.read_struct(DDS)
-    print(dds.header.pixel_format.fourCC)
-
     

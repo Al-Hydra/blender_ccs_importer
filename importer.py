@@ -363,7 +363,7 @@ class importCCS:
                             existingObjectModel = existing_object.get("Model")
                             bObject["model"] = existingObjectModel if existingObjectModel else None
                         else:
-                            bObject["model"] = extChunk.object.model.name
+                            bObject["model"] = extChunk.name.replace("OBJ_", "MDL_")
                         
                         if extChunk.clump:
                             self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
@@ -401,6 +401,7 @@ class importCCS:
 
 
     def makeModels(self, model, clump, parentBone):
+        model_name = parentBone.replace("OBJ_", "MDL_")
         if model != None and model.type == 'Model':
             if model.meshCount > 0 and model.modelType & 8 and self.import_shadow:
                 for i, mesh in enumerate(model.meshes):
@@ -412,17 +413,17 @@ class importCCS:
                     triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
                     bm.faces.ensure_lookup_table()                        
 
-                    blender_mesh = bpy.data.meshes.new(f'{model.name}')
+                    blender_mesh = bpy.data.meshes.new(f'{model_name}')
                     bm.to_mesh(blender_mesh)
 
-                    obj = bpy.data.objects.new(f'{model.name}', blender_mesh)
+                    obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
                     self.collection.objects.link(obj)
             
 
             elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
                 #Create the object and its mesh data
-                meshdata = bpy.data.meshes.new(f'{model.name}')
-                obj = bpy.data.objects.new(f'{model.name}', meshdata)
+                meshdata = bpy.data.meshes.new(f'{model_name}')
+                obj = bpy.data.objects.new(f'{model_name}', meshdata)
                 
                 #find the armature and add all the bones to a dict
                 armature = bpy.data.objects.get(clump.name)
@@ -467,8 +468,8 @@ class importCCS:
 
             elif model.meshCount > 0 and model.modelType & 2:
                     for mesh in model.meshes:
-                        meshdata = bpy.data.meshes.new(f'{model.name}')
-                        obj = bpy.data.objects.new(f'{model.name}', meshdata)
+                        meshdata = bpy.data.meshes.new(f'{model_name}')
+                        obj = bpy.data.objects.new(f'{model_name}', meshdata)
 
                         bone_indices = {}
                         parent_clump = bpy.data.objects.get(clump.name)
@@ -499,8 +500,8 @@ class importCCS:
                 #single bone
                 if model.meshCount > 0 and model.modelType < 2:
                     #Create the object and its mesh data
-                    meshdata = bpy.data.meshes.new(f'{model.name}')
-                    obj = bpy.data.objects.new(f'{model.name}', meshdata)
+                    meshdata = bpy.data.meshes.new(f'{model_name}')
+                    obj = bpy.data.objects.new(f'{model_name}', meshdata)
                     
                     #find the armature and add all the bones to a dict
                     if not hasattr(clump, "name"):
@@ -946,7 +947,7 @@ class importCCS:
             bone = armatureObj.data.bones.get(posebone.name)
 
             bloc = Vector(bone["original_coords"][0]) * 0.01
-            brot = Quaternion(bone["rotation_quat"]).inverted()
+            brot = Quaternion(bone["rotation_quat"])
             bscale = Vector(bone["original_coords"][2])
 
             group_name = action.groups.new(name = posebone.name).name
@@ -994,11 +995,25 @@ class importCCS:
                 target_bone = obj.replace(source, target)
 
             #try to get it from blender
+            '''if target_bone.startswith("OBJ_1nrk"):
+                breakpoint()'''
+            clump_ref = None
             clump = bpy.context.scene.ccs_importer.objects.get(target_bone)
             if clump:
                 clump = clump.clump
             else:
-                continue
+                #attempt to get it from the scene
+                empty_obj = bpy.data.objects.get(target_bone)
+                
+                if empty_obj:
+                    clump_ref = empty_obj.get("clump")
+                
+                if clump_ref:
+                    clump = bpy.data.objects.get(clump_ref).name
+
+                
+                else:
+                    continue
 
             armatureObj = bpy.data.objects.get(clump)
 
@@ -1021,9 +1036,10 @@ class importCCS:
             locations = {}
             rotations = {}
             scales = {}
+            opacity_dict = {}
             startQuat = brot
-            for frame, locrotscale in anim.objects[obj].items():
-                loc, rot, scale = locrotscale
+            for frame, locrotscaleop in anim.objects[obj].items():
+                loc, rot, scale, opacity = locrotscaleop
 
                 loc = Vector(loc) * 0.01
                 bind_loc = Vector(bloc)
@@ -1040,7 +1056,10 @@ class importCCS:
                 rotations[frame] = endQuat
                 startQuat = endQuat
 
-                scales[frame] = Vector(scale) * bscale
+                scale_factor = Vector([s / b for s, b in zip(scale, bscale)])
+                scales[frame] = scale_factor
+                
+                opacity_dict[frame] = [opacity]
                 
             data_path = f'{bone_path}.{"location"}'
             self.insertFrames(action, group_name, data_path, locations, 3)
@@ -1050,6 +1069,11 @@ class importCCS:
             
             data_path = f'{bone_path}.{"scale"}'
             self.insertFrames(action, group_name, data_path, scales, 3)
+            
+            data_path = f'{bone_path}.{"opacity"}'
+            self.insertFrames(action, group_name, data_path, opacity_dict, 1)
+            
+            
         
         
         if self.import_morphs:
@@ -1069,21 +1093,24 @@ class importCCS:
                     sourceModelBlender.animation_data_create()
                     sourceModelBlender.animation_data.action = action
                     
-                    for target in anim.morphs[morphF].keys():
-                        #check if the source model has a shape key for this target
-                        targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
-                        if not targetShapeKey:
-                            targetShapeKey = sourceModelBlender.shape_key_add(name = target)
-                            targetModelBlender = bpy.data.objects.get(target)
+                    try:
+                        for target in anim.morphs[morphF].keys():
+                            #check if the source model has a shape key for this target
+                            targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
+                            if not targetShapeKey:
+                                targetShapeKey = sourceModelBlender.shape_key_add(name = target)
+                                targetModelBlender = bpy.data.objects.get(target)
 
-                            if targetModelBlender:
-                                for i in range(len(targetModelBlender.data.vertices)):
-                                    targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
-                    
+                                if targetModelBlender:
+                                    for i in range(len(targetModelBlender.data.vertices)):
+                                        targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                        
 
-                                data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
+                                    data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
 
-                                self.insertFrames(action, targetShapeKey.name, data_path, anim.morphs[morphF][targetShapeKey.name], 1)
+                                    self.insertFrames(action, targetShapeKey.name, data_path, 1 - anim.morphs[morphF][targetShapeKey.name], 1)
+                    except:
+                        print(f"Error at {targetShapeKey.name}")
 
         
 
@@ -1127,6 +1154,7 @@ class importCCS:
                 blender_mat.node_tree.animation_data_create()
 
                 ccsShader = blender_mat.node_tree.nodes["ccsShader"]
+                UV_node = blender_mat.node_tree.nodes["ccsAnimatedUV"]
 
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
@@ -1134,12 +1162,12 @@ class importCCS:
                 scaleY_value = blender_mat["uvOffset"][3]
                 
                 for ofsX in mat.offsetX.keys():
-                    ccsShader.inputs["X Offset"].default_value = mat.offsetX[ofsX] - offsetX_value
-                    ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= ofsX)
+                    UV_node.inputs[1].default_value = mat.offsetX[ofsX] - offsetX_value
+                    UV_node.inputs[1].keyframe_insert('default_value', frame= ofsX)
                 
                 for ofsY in mat.offsetY.keys():
-                    ccsShader.inputs["Y Offset"].default_value = mat.offsetY[ofsY] - offsetY_value 
-                    ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= ofsY)
+                    UV_node.inputs[2].default_value = mat.offsetY[ofsY] - offsetY_value 
+                    UV_node.inputs[2].keyframe_insert('default_value', frame= ofsY)
                 
                 '''for sclX in mat.scaleX.keys():
                     ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] + scaleX_value 
@@ -1168,6 +1196,7 @@ class importCCS:
                 blender_mat.node_tree.animation_data_create()
 
                 ccsShader = blender_mat.node_tree.nodes["ccsShader"]
+                UV_node = blender_mat.node_tree.nodes["ccsAnimatedUV"]
 
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
@@ -1176,24 +1205,24 @@ class importCCS:
 
 
                 for frame, values in anim.materials[mat].items():
-                    ccsShader.inputs["X Offset"].default_value = values[0] - offsetX_value
-                    ccsShader.inputs["X Offset"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[1].default_value = values[0] - offsetX_value
+                    UV_node.inputs[1].keyframe_insert('default_value', frame= frame)
 
-                    ccsShader.inputs["Y Offset"].default_value = values[1] - offsetY_value 
-                    ccsShader.inputs["Y Offset"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[2].default_value = 1 - (values[1] - offsetY_value)
+                    UV_node.inputs[2].keyframe_insert('default_value', frame= frame)
 
                 if values[2] == 1:
-                    ccsShader.inputs["X Scale"].default_value = 1
-                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[3].default_value = 1
+                    UV_node.inputs[3].keyframe_insert('default_value', frame= frame)
                 else:
-                    ccsShader.inputs["X Scale"].default_value = 1 + values[2] - scaleX_value
-                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[3].default_value = 1 + values[2] - scaleX_value
+                    UV_node.inputs[3].keyframe_insert('default_value', frame= frame)
                 if values[3] == 1:
-                    ccsShader.inputs["Y Scale"].default_value = 1
-                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[4].default_value = 1
+                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)
                 else:
-                    ccsShader.inputs["Y Scale"].default_value = 1 + values[3] - scaleY_value
-                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[4].default_value = 1 + values[3] - scaleY_value
+                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)
 
                 
                 material_action = blender_mat.node_tree.animation_data.action
@@ -1237,6 +1266,7 @@ class importCCS:
 
 
     def convertVectorLocation(self, keyframes, bloc, brot):
+        #locations = {frame : ((Vector(loc) * 0.01) - bloc) for frame, loc in keyframes}
         locations = {}
         for frame, loc in keyframes:
             loc = Vector(loc) * 0.01
@@ -1249,7 +1279,7 @@ class importCCS:
         return locations
 
     def convertVectorScale(self, keyframes, bscale):
-        return {keyframe: (Vector(value) * bscale) for keyframe,value in keyframes}
+        return {keyframe: (bscale[0] / value[0], bscale[1] / value[1],bscale[2] / value[2]) for keyframe,value in keyframes}
 
 
     def insertFrames(self, action, group_name, data_path, values, values_count):
