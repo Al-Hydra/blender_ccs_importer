@@ -3,7 +3,7 @@ from .utils.PyBinaryReader.binary_reader import *
 class ccsHit(BrStruct):
     def __init__(self):
         self.name = ''
-        self.type = "Hit"
+        self.type = "HitModel"
         self.path = ''
         self.hitMeshes = []
     def __br_read__(self, br: BinaryReader, indexTable, version):

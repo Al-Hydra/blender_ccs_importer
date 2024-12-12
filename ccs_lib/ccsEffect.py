@@ -21,15 +21,12 @@ class ccsEffect(BrStruct):
         self.objectIndex = br.read_uint32()
         unk1 = br.read_int16()
         count = br.read_int16()
+        minSomething = br.read_float(2)
+        maxSomething = br.read_float(2)
         
-        for i in range(count):
-            unkFloats = br.read_float(2)
-
-        for i in range(count):
-            unkFloats = br.read_int16()
-
-        for i in range(count):
-            unkFloats = br.read_int32(2)
+        effectInfo = br.read_bytes(8 * count + 4)
+        
+        
     
     def finalize(self, chunks):
         self.object = chunks.get(self.objectIndex)

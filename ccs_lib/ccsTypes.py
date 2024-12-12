@@ -43,8 +43,8 @@ class CCSTypes(Enum):
     Blit_Group = 0x1000
     FrameBuffer_Page = 0x1100
     FrameBuffer_Rect = 0x1200
-    DummyPosition = 0x1300
-    DummyPositionRotation = 0x1400
+    DummyPos = 0x1300
+    DummyPosRot = 0x1400
     Layer = 0x1700
     Shadow = 0x1800
     ShadowFrame = 0x1801
