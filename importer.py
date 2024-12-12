@@ -867,12 +867,14 @@ class importCCS:
 
         bpy.context.view_layer.objects.active = armature_object
         bpy.ops.object.mode_set(mode = 'EDIT')
-        bpy.ops.armature.select_all(action='SELECT')
-        bpy.ops.armature.delete()
+        '''bpy.ops.armature.select_all(action='SELECT')
+        bpy.ops.armature.delete()'''
 
         importerProp = bpy.context.scene.ccs_importer
 
         for b in cmp.bones.values():
+            if armature.bones.get(b.name):
+                continue
             bone = armature.edit_bones.new(b.name)
 
             bone_object = b.object
