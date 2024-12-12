@@ -968,12 +968,12 @@ class importCCS:
             
             bone_path = f'pose.bones["{group_name}"]'
 
-            locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot)
+            locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
             data_path = f'{bone_path}.{"location"}'
             self.insertFrames(action, group_name, data_path, locations, 3)
             
             #Rotations Euler
-            rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot)
+            rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
             data_path = f'{bone_path}.{"rotation_quaternion"}'
             self.insertFrames(action, group_name, data_path, rotations, 4)
             
@@ -1253,15 +1253,8 @@ class importCCS:
 
     def convertQuaternionRotation(self, keyframes, brot):
         #Rotations Quaternion
-        rotations = {}
-        for frame, rotation in keyframes:
-            bind_rotaion = brot.conjugated()
-            rotation = Quaternion((rotation[3], *rotation[:3]))
-            #rotate it with the new rotation
-            bind_rotaion.rotate(rotation)
-            #invert the result
-            rotations[frame] = Quaternion(bind_rotaion).conjugated()
-        
+        rotations = {keyframe : brot.rotation_difference(Quaternion((rotation[3], *rotation[:3])).inverted()) for keyframe, rotation in keyframes}
+
         return rotations
 
 
@@ -1279,7 +1272,9 @@ class importCCS:
         return locations
 
     def convertVectorScale(self, keyframes, bscale):
-        return {keyframe: (bscale[0] / value[0], bscale[1] / value[1],bscale[2] / value[2]) for keyframe,value in keyframes}
+        scales = {keyframe: Vector([s / b for s, b in zip(value, bscale)]) for keyframe,value in keyframes}
+        
+        return scales
 
 
     def insertFrames(self, action, group_name, data_path, values, values_count):
