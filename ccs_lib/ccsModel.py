@@ -32,7 +32,8 @@ class RigidMesh(BrStruct):
         
         if ((modelFlags & 2) == 0):
             for i in range(self.vertexCount):
-                vertex.color = br.read_uint8(4)
+                vertex.color = [min(255, br.read_uint8() * 2) / 255 for i in range(4)]
+
 
         if ((modelFlags & 4) == 0):
             if version > 0x125:

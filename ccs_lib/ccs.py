@@ -16,9 +16,11 @@ from .ccsAnimation import ccsAnimation
 from .ccsMorph import ccsMorph
 from .ccsLight import ccsLight
 from .ccsEffect import ccsEffect
+from .ccsPCM import ccsPCM
 from time import perf_counter
 from .Anms import *
 import gzip, zlib
+from cProfile import Profile
 
 
 
@@ -50,7 +52,6 @@ class ccsFile(BrStruct):
         index = 0
         #read regular chunks
         while chunkType != CCSTypes.Stream:
-            #print(hex(br.pos()))
             chunkType = CCSTypes(br.read_uint16())
             br.seek(2, 1) #skip 0xCCCC bytes
             chunkSize = br.read_uint32() * 4
@@ -68,7 +69,6 @@ class ccsFile(BrStruct):
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}, index {index}")
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
 
-            self.sortedChunks
             self.sortedChunks[chunkData.type].append(chunkData)
             self.chunks[chunkData.index] = chunkData
 
@@ -82,6 +82,25 @@ class ccsFile(BrStruct):
             chunk.finalize(self.chunks)
             asset = chunk.path
             self.assets[asset].append(chunk)
+    
+    def combinePCM(self):
+        parentPCM = None
+        
+        if self.sortedChunks.get("PCM"):
+            for chunk in self.sortedChunks["PCM"]:
+                if chunk.type == "PCM":
+                    parentPCM = chunk
+                    break
+
+        #get pcmframes
+        if self.stream:
+            if self.stream.pcmFrames:
+                for frame, pcm in self.stream.pcmFrames.items():
+                    if frame == 0:
+                        continue
+                    parentPCM.data += pcm.data
+        
+        return parentPCM
 
 
 class ccsHeader(BrStruct):
@@ -132,6 +151,7 @@ class ccsChunk(BrStruct):
 
 
 def readCCS(filePath):
+    time = perf_counter()
     with open(filePath, "rb") as f:
         fileBytes = f.read()
         #check if the file is gzipped
@@ -139,14 +159,11 @@ def readCCS(filePath):
             fileBytes = gzip.decompress(fileBytes)
             print("File is gzipped")
 
-    br = BinaryReader(fileBytes, encoding='cp932')
-    start = perf_counter()
-    
+    br = BinaryReader(fileBytes, encoding='cp932')        
     ccs = br.read_struct(ccsFile)
-
-    print(f"read in {perf_counter() - start}")
+    
+    print(f"CCS read in {perf_counter() - time} seconds")
     return ccs
-
 
 if __name__ == "__main__":
     ccs = readCCS("D:\CCS\Infection\cbu1body.ccs")

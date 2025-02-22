@@ -61,7 +61,7 @@ class CCSTypes(Enum):
     FBSBlurFrame = 0x1d01
     Sprite2Tbl = 0x1f00
     AnimationObject = 0x2000
-    PCM_Audio = 0x2200
+    PCM = 0x2200
     PCMFrame = 0x2201
     Dynamics = 0x2300
     Binary_Blob = 0x2400
@@ -128,8 +128,8 @@ ccsDict = {
     0x1d01: "",
     0x1f00: "",
     0x2000: "ccsAnmObject",
-    0x2200: "",
-    0x2201: "",
+    0x2200: "ccsPCM",
+    0x2201: "PCMFrame",
     0x2300: "ccsDynamics",
     0x2400: "",
     0x2700: "",

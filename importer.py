@@ -10,6 +10,8 @@ from bpy_extras.io_utils import ImportHelper
 from .ccs_lib.ccsAnimation import *
 from .ccs_lib.ccsStream import *
 import os, zlib
+import cProfile
+import pstats
 
 class ccsObjectProperties(bpy.types.PropertyGroup):
     name: StringProperty(
@@ -79,11 +81,14 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     import_cameras: BoolProperty(name = "Import Cameras", default = True) #type: ignore
     import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
+    import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
 
     
     def execute(self, context):
 
         start_time = time()
+        '''profiler = cProfile.Profile()
+        profiler.enable()'''
 
         ccsFiles = []
 
@@ -126,9 +131,15 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
 
                 importer.read(context)
 
-
+        #profiler.disable()
         elapsed_s = "{:.2f}s".format(time() - start_time)
         self.report({'INFO'}, "CCS files imported in " + elapsed_s)
+        
+        #profile results
+        '''stats = pstats.Stats(profiler)
+        stats.strip_dirs()
+        stats.sort_stats('cumtime')
+        stats.print_stats()'''
 
         return {'FINISHED'}
 
@@ -150,6 +161,8 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
         row.prop(self, "import_all_textures")
         row = layout.row()
         row.prop(self, "import_stream")
+        row = layout.row()
+        row.prop(self, "import_lights")
         
 
         row = layout.row()
@@ -212,6 +225,7 @@ class DropCCS(Operator):
     import_cameras: BoolProperty(name = "Import Cameras", default = True) #type: ignore
     import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
+    import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -296,6 +310,22 @@ class importCCS:
         self.emptiesCollection = bpy.data.collections.new(f"{self.ccsf.name} Empties")
         bpy.context.collection.children.link(self.collection)
         self.collection.children.link(self.emptiesCollection)
+        
+        
+        if not bpy.data.collections.get("CCS Scene Manager"):
+            ccs_manager_collection = bpy.data.collections.new("CCS Scene Manager")
+            bpy.context.collection.children.link(ccs_manager_collection)
+        else:
+            ccs_manager_collection = bpy.data.collections.get("CCS Scene Manager")
+        
+        if not bpy.data.objects.get("CCS Scene Manager"):
+            #create an empty object for CCS Scene Manager
+            ccs_manager = bpy.data.objects.new("CCS Scene Manager", None)
+            ccs_manager.empty_display_size = 0.01
+            ccs_manager_collection.objects.link(ccs_manager)
+        else:
+            ccs_manager = bpy.data.objects.get("CCS Scene Manager")
+        
 
 
         #clumps
@@ -386,6 +416,42 @@ class importCCS:
                     bCamera = bpy.data.cameras.new(cam.name)
                     cameraObject = bpy.data.objects.new(cam.name, bCamera)
                     self.collection.objects.link(cameraObject)
+
+        if self.import_lights:
+            # Distant Lights
+            for light in self.ccsf.sortedChunks["Light"]:
+                bLight = bpy.data.lights.get(light.name)
+                if not bLight:
+                    #check the light type
+                    if light.lightType.value == 1:
+                        bLight = bpy.data.objects.new(light.name, None)
+                        bLight.empty_display_type = 'SINGLE_ARROW'
+                        bLight.empty_display_size = 2
+                        bLight.scale = (-1, -1, -1)
+                        #set this object as the light direction object
+                        ccs_manager["lightdir_object"] = bLight
+                        
+                        lightObject = bLight
+
+                        
+                    elif light.lightType.value == 2:
+                        bLight = bpy.data.lights.new(name = light.name, type = 'AREA')
+                        lightObject = bpy.data.objects.new(light.name, bLight)
+                    elif light.lightType.value == 3:
+                        bLight = bpy.data.lights.new(name = light.name, type = 'SPOT')
+                        lightObject = bpy.data.objects.new(light.name, bLight)
+                    elif light.lightType.value == 4:
+                        bLight = bpy.data.objects.new(light.name, None)
+                        bLight.empty_display_type = 'SPHERE'
+                        bLight.empty_display_size = 0.5
+                        
+                        #set this object as the light point object
+                        ccs_manager["lightpoint_object"] = bLight
+
+                    
+                        lightObject = bLight
+                    self.collection.objects.link(lightObject)
+
 
         if self.import_animations:
             #Animations
@@ -543,6 +609,8 @@ class importCCS:
 
                     obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
                     obj.modifiers['Armature'].object = armature
+                    #set the active color layer
+                    meshdata.vertex_colors.active = meshdata.vertex_colors[0]
 
                     obj.parent = armature
 
@@ -644,7 +712,8 @@ class importCCS:
                     face.smooth = True
                     for loop in face.loops:
                         loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
-                        loop[color_layer] = mesh.vertices[loop.vert.index - vCount].color
+                        color = mesh.vertices[loop.vert.index - vCount].color
+                        loop[color_layer] = color
                     
                     #we need to flip the direction for the next face
                     direction *= -1
@@ -656,6 +725,7 @@ class importCCS:
         bm = bmesh.new()
         uv_layer = bm.loops.layers.uv.new(f"UV")
         vgroup_layer = bm.verts.layers.deform.new("Weights")
+        color_layer = bm.loops.layers.color.new(f"Color")
 
         normals = []
 
@@ -663,12 +733,6 @@ class importCCS:
 
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position
-            #boneID1 = model.lookupList[ccsVertex.boneIDs[0]]
-            #boneID2 = model.lookupList[ccsVertex.boneIDs[1]]
-
-            #vertex_matrix1 = model.clump.bones[boneID1].matrix
-            #vertex_matrix2 = model.clump.bones[boneID2].matrix
-
             vertex_matrix1 = parent_clump.data.bones[ccsVertex.boneIDs[0]]["matrix"]
             vertex_matrix2 = parent_clump.data.bones[ccsVertex.boneIDs[1]]["matrix"]
             
@@ -719,6 +783,10 @@ class importCCS:
                     face.loops[0][uv_layer].uv = triUV1
                     face.loops[1][uv_layer].uv = triUV2
                     face.loops[2][uv_layer].uv = triUV3
+                    
+                    face.loops[0][color_layer] = 1, 1, 1, 1
+                    face.loops[1][color_layer] = 1, 1, 1, 1
+                    face.loops[2][color_layer] = 1, 1, 1, 1
                 except:
                     print(f"error at {i}")
 
@@ -730,6 +798,8 @@ class importCCS:
         return meshdata
     
     def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, vCount): 
+        
+        color_layer = bm.loops.layers.color.new(f"Color")
         
         if not model.lookupList:
             bones = [bone for bone in clump.bones.values()]
@@ -785,6 +855,7 @@ class importCCS:
             bmVertex[vgroup_layer][boneID3] += ccsVertex.weights[2]
             bmVertex[vgroup_layer][boneID4] += ccsVertex.weights[3]
 
+
             flag = ccsVertex.triangleFlag
             
             if flag == 1:
@@ -801,6 +872,7 @@ class importCCS:
                 face.smooth = True
                 for loop in face.loops:
                     loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
+                    loop[color_layer] = 1, 1, 1, 1
                     #loop[color_layer] = mesh.vertices[loop.vert.index].color
                 #we need to flip the direction for the next face
                 direction *= -1
@@ -867,8 +939,6 @@ class importCCS:
 
         bpy.context.view_layer.objects.active = armature_object
         bpy.ops.object.mode_set(mode = 'EDIT')
-        '''bpy.ops.armature.select_all(action='SELECT')
-        bpy.ops.armature.delete()'''
 
         importerProp = bpy.context.scene.ccs_importer
 
@@ -904,6 +974,9 @@ class importCCS:
 
     def makeAction(self, anim):
         action = bpy.data.actions.new(anim.name)
+        
+        scene_action = bpy.data.actions.new(f"{anim.name}_CCS_Scene")
+        
         #set fps to 30
         bpy.context.scene.render.fps = 30
 
@@ -1095,24 +1168,23 @@ class importCCS:
                     sourceModelBlender.animation_data_create()
                     sourceModelBlender.animation_data.action = action
                     
-                    try:
-                        for target in anim.morphs[morphF].keys():
-                            #check if the source model has a shape key for this target
-                            targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(target)
-                            if not targetShapeKey:
-                                targetShapeKey = sourceModelBlender.shape_key_add(name = target)
-                                targetModelBlender = bpy.data.objects.get(target)
+                    for target in anim.morphs[morphF].keys():
+                        #check if the source model has a shape key for this target
+                        targetShapeKey = sourceModelBlender.data.shape_keys.key_blocks.get(morphF)
+                        if not targetShapeKey:
+                            targetShapeKey = sourceModelBlender.shape_key_add(name = morphF)
+                            targetModelBlender = bpy.data.objects.get(target)
 
-                                if targetModelBlender:
-                                    for i in range(len(targetModelBlender.data.vertices)):
-                                        targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
-                        
+                            if targetModelBlender:
+                                for i in range(len(targetModelBlender.data.vertices)):
+                                    targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                    
 
-                                    data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
-
-                                    self.insertFrames(action, targetShapeKey.name, data_path, 1 - anim.morphs[morphF][targetShapeKey.name], 1)
-                    except:
-                        print(f"Error at {targetShapeKey.name}")
+                                data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
+                                
+                                self.insertFrames(action, targetShapeKey.name, data_path, anim.morphs[morphF][target], 1)
+                    #except:
+                    #    print(f"Error at {targetShapeKey.name}")
 
         
 
@@ -1145,6 +1217,57 @@ class importCCS:
                 
                 data_path = f'{"data.lens"}'
                 self.insertFrames(camera_action, group_name, data_path, fovs, 1)
+        
+        for light in anim.lights.keys():
+            if light == "Ambient":
+                ambient = anim.lights[light]
+                scene_manager = bpy.context.scene.ccs_manager
+                
+                group_name = scene_action.groups.new(name = f"Ambient").name
+                
+                ambient_color = {}
+                for frame, values in ambient.items():
+                    ambient_color[frame] = [c / 255 for c in values]
+                    
+                data_path = f'{"ccs_manager.ambient_color"}'
+                self.insertFrames(scene_action, group_name, data_path, ambient_color, 4)
+                
+                
+            lightObject = self.collection.objects.get(light)
+
+            group_name = action.groups.new(name = light).name
+
+            if lightObject:
+                #create a separate action for each light
+                light_action = bpy.data.actions.new(f"{anim.name} ({light})")
+                #apply the animation on the light
+                lightObject.animation_data_create()
+                lightObject.animation_data.action = light_action
+                
+                #create a scene manager action
+                light_scene_manager_action = scene_action
+                bpy.context.scene.animation_data_create()
+                bpy.context.scene.animation_data.action = light_scene_manager_action
+                
+
+                locations = {}
+                rotations = {}
+                energy = {}
+                color = {}
+                for frame, values in anim.lights[light].items():
+                    rot, col, en = values
+                    rotations[frame] = [radians(r) for r in rot] 
+                    energy[frame] = [en]
+                    color[frame] = [c / 255 for c in col]
+
+                data_path = f'{"rotation_euler"}'
+                self.insertFrames(light_action, group_name, data_path, rotations, 3)
+                
+                data_path = f'{"ccs_manager.lightdir_intensity"}'
+                self.insertFrames(light_scene_manager_action, group_name, data_path, energy, 1)
+                
+                data_path = f'{"ccs_manager.lightdir_color"}'
+                self.insertFrames(light_scene_manager_action, group_name, data_path, color, 4)
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
@@ -1152,24 +1275,36 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
+                material_action = bpy.data.actions.new(f"{action.name} ({mat.name})")
                 blender_mat.animation_data_create()
-                blender_mat.node_tree.animation_data_create()
-
-                ccsShader = blender_mat.node_tree.nodes["ccsShader"]
-                UV_node = blender_mat.node_tree.nodes["ccsAnimatedUV"]
-
+                blender_mat.animation_data.action = material_action
+                
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
                 scaleX_value = blender_mat["uvOffset"][2]
                 scaleY_value = blender_mat["uvOffset"][3]
                 
-                for ofsX in mat.offsetX.keys():
-                    UV_node.inputs[1].default_value = mat.offsetX[ofsX] - offsetX_value
+                offsetsX = {f: [v] for f, v in mat.offsetX.items()}
+                offsetsY = {f: [1 - (v)] for f, v in mat.offsetY.items()}
+                scalesX = {f: [v + scaleX_value] for f, v in mat.scaleX.items()}
+                scalesY = {f: [v + scaleY_value] for f, v in mat.scaleY.items()}
+                
+                data_path = f'{"ccs_material.uvOffset"}'
+                self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
+                data_path = f'{"ccs_material.uvOffset"}'
+                self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
+                data_path = f'{"ccs_material.uvOffset"}'
+                self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
+                data_path = f'{"ccs_material.uvOffset"}'
+                self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
+                
+                '''for ofsX in mat.offsetX.keys():
+                    mat_props.uvOffset[0] = mat.offsetX[ofsX] - offsetX_value
                     UV_node.inputs[1].keyframe_insert('default_value', frame= ofsX)
                 
                 for ofsY in mat.offsetY.keys():
                     UV_node.inputs[2].default_value = mat.offsetY[ofsY] - offsetY_value 
-                    UV_node.inputs[2].keyframe_insert('default_value', frame= ofsY)
+                    UV_node.inputs[2].keyframe_insert('default_value', frame= ofsY)'''
                 
                 '''for sclX in mat.scaleX.keys():
                     ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] + scaleX_value 
@@ -1179,13 +1314,13 @@ class importCCS:
                     ccsShader.inputs["Y Scale"].default_value = mat.scaleY[sclY] + scaleY_value 
                     ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)'''
                 
-                material_action = blender_mat.node_tree.animation_data.action
+                '''material_action = blender_mat.node_tree.animation_data.action
 
                 if material_action:
                     material_action.name = f"{action.name} ({mat.name})"
                     for fcurve in material_action.fcurves:
                         for keyframe in fcurve.keyframe_points:
-                            keyframe.interpolation = 'LINEAR'
+                            keyframe.interpolation = 'LINEAR'''
         
         
         for mat in anim.materials.keys():
@@ -1194,19 +1329,42 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
+                material_action = bpy.data.actions.new(f"{action.name} ({mat})")
                 blender_mat.animation_data_create()
-                blender_mat.node_tree.animation_data_create()
-
-                ccsShader = blender_mat.node_tree.nodes["ccsShader"]
-                UV_node = blender_mat.node_tree.nodes["ccsAnimatedUV"]
-
+                blender_mat.animation_data.action = material_action
+                
+                
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
                 scaleX_value = blender_mat["uvOffset"][2]
                 scaleY_value = blender_mat["uvOffset"][3]
 
-
+                
+                data_path = f'{"ccs_material.uvOffset"}'
+                offsetsX = {}
+                offsetsY = {}
+                scalesX = {}
+                scalesY = {}
                 for frame, values in anim.materials[mat].items():
+                    offsetsX[frame] = [values[0] - offsetX_value]
+                    offsetsY[frame] = [1 - (values[1] - offsetY_value)]
+                    
+                    if values[2] == 1:
+                        scalesX[frame] = [1]
+                    else:
+                        scalesX[frame] = [1 + values[2] - scaleX_value]
+                        
+                    if values[3] == 1:
+                        scalesY[frame] = [1]
+                    else:
+                        scalesY[frame] = [1 + values[3] - scaleY_value]
+                        
+                self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
+                self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
+                self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
+                self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
+
+                '''for frame, values in anim.materials[mat].items():
                     UV_node.inputs[1].default_value = values[0] - offsetX_value
                     UV_node.inputs[1].keyframe_insert('default_value', frame= frame)
 
@@ -1224,16 +1382,16 @@ class importCCS:
                     UV_node.inputs[4].keyframe_insert('default_value', frame= frame)
                 else:
                     UV_node.inputs[4].default_value = 1 + values[3] - scaleY_value
-                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)
+                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)'''
 
                 
-                material_action = blender_mat.node_tree.animation_data.action
+                '''material_action = blender_mat.node_tree.animation_data.action
 
                 if material_action:
                     material_action.name = f"{action.name} ({mat})"
                     for fcurve in material_action.fcurves:
                         for keyframe in fcurve.keyframe_points:
-                            keyframe.interpolation = 'LINEAR'
+                            keyframe.interpolation = 'LINEAR'''
 
 
     def convertEulerRotation(self, keyframes, brot):
@@ -1287,6 +1445,15 @@ class importCCS:
                 fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), values.keys(), values.values())) for x in co])
 
                 fc.update()
+    
+    
+    def insertMaterialFrames(self, action, group_name, data_path, values, index):
+        if len(values):
+            fc = action.fcurves.new(data_path=data_path, index=index, action_group=group_name)
+            fc.keyframe_points.add(len(values.keys()))
+            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[0]), values.keys(), values.values())) for x in co])
+
+            fc.update()
         
     
 def menu_func_import(self, context):
