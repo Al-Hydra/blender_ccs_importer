@@ -31,10 +31,8 @@ class RigidMesh(BrStruct):
 
         
         if ((modelFlags & 2) == 0):
-            for i in range(self.vertexCount):
-                vertex.color = [min(255, br.read_uint8() * 2) / 255 for i in range(4)]
-
-
+            for vertex in self.vertices:
+                vertex.color = [min(255, br.read_uint8() * 2) for i in range(4)]
         if ((modelFlags & 4) == 0):
             if version > 0x125:
                 for v in self.vertices:
@@ -325,7 +323,8 @@ class ccsModel(BrStruct):
         self.modelType = br.read_uint8()
         self.modelFlags = br.read_uint8()
         self.meshCount = br.read_uint16()
-        self.matFlags = br.read_uint16()
+        self.matFlags1 = br.read_uint8()
+        self.matFlags2 = br.read_uint8()
         self.unkFlags = br.read_int16()
         self.lookupListCount = br.read_uint8()
         self.extraFlags = br.read_uint8()
@@ -370,7 +369,7 @@ class ccsModel(BrStruct):
 
 
 class Vertex(BrStruct):
-    def __init__(self, p=(0,0,0), n=(0,0,0), c=(1,1,1,1), uv=(0,0), scale = 256, flag=0):
+    def __init__(self, p=(0,0,0), n=(0,0,0), c=(255,255,255,255), uv=(0,0), scale = 256, flag=0):
         scale = ((scale / 256)  / 16) * 0.01
 
         self.position = (p[0] * scale,

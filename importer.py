@@ -490,6 +490,14 @@ class importCCS:
                 #Create the object and its mesh data
                 meshdata = bpy.data.meshes.new(f'{model_name}')
                 obj = bpy.data.objects.new(f'{model_name}', meshdata)
+                obj["emissive"] = 0
+                obj["invert_colors"] = 0
+                obj["opacity"] = 1
+                if model.matFlags1 & 1:
+                    obj["emissive"] = 1
+                elif model.matFlags1 & 2:
+                    obj["emissive"] = 1
+                    obj["invert_colors"] = 1
                 
                 #find the armature and add all the bones to a dict
                 armature = bpy.data.objects.get(clump.name)
@@ -503,12 +511,16 @@ class importCCS:
                 bm = bmesh.new()
                 vgroup_layer = bm.verts.layers.deform.new("Weights")
                 uv_layer = bm.loops.layers.uv.new(f"UV")
+                color_layer = bm.loops.layers.color.new(f"Color")
 
                 for mesh in model.meshes:
                     
                     #add the mesh material
                     mat = self.makeMaterial(model, mesh)
                     mat_slot = obj.material_slots.get(mat.name)
+                    if obj["emissive"]:
+                            mat.surface_render_method = 'BLENDED'
+                            mat.use_transparency_overlap = True
                     if mat_slot:
                         matIndex = mat_slot.slot_index
                     else:
@@ -517,7 +529,7 @@ class importCCS:
                         matIndex = mat_slot.slot_index
 
                     #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
-                    self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, vCount)                       
+                    self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, color_layer, vCount)                       
                     vCount = len(bm.verts)
                 
                 bm.to_mesh(meshdata)
@@ -536,6 +548,14 @@ class importCCS:
                     for mesh in model.meshes:
                         meshdata = bpy.data.meshes.new(f'{model_name}')
                         obj = bpy.data.objects.new(f'{model_name}', meshdata)
+                        obj["emissive"] = 0
+                        obj["invert_colors"] = 0
+                        obj["opacity"] = 1
+                        if model.matFlags1 & 1:
+                            obj["emissive"] = 1
+                        elif model.matFlags1 & 2:
+                            obj["emissive"] = 1
+                            obj["invert_colors"] = 1
 
                         bone_indices = {}
                         parent_clump = bpy.data.objects.get(clump.name)
@@ -547,6 +567,9 @@ class importCCS:
 
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
+                        if obj["emissive"]:
+                            mat.surface_render_method = 'BLENDED'
+                            mat.use_transparency_overlap = True
                         obj.data.materials.append(mat)
 
                         if model.clump:
@@ -568,6 +591,14 @@ class importCCS:
                     #Create the object and its mesh data
                     meshdata = bpy.data.meshes.new(f'{model_name}')
                     obj = bpy.data.objects.new(f'{model_name}', meshdata)
+                    obj["emissive"] = 0
+                    obj["invert_colors"] = 0
+                    obj["opacity"] = 1
+                    if model.matFlags1 & 1:
+                        obj["emissive"] = 1
+                    elif model.matFlags1 & 2:
+                        obj["emissive"] = 1
+                        obj["invert_colors"] = 1
                     
                     #find the armature and add all the bones to a dict
                     if not hasattr(clump, "name"):
@@ -592,6 +623,9 @@ class importCCS:
                     for m, mesh in enumerate(model.meshes):
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
+                        if obj["emissive"]:
+                            mat.surface_render_method = 'BLENDED'
+                            mat.use_transparency_overlap = True
                         mat_slot = obj.material_slots.get(mat.name)
                         if mat_slot:
                             matIndex = mat_slot.slot_index
@@ -713,7 +747,7 @@ class importCCS:
                     for loop in face.loops:
                         loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
                         color = mesh.vertices[loop.vert.index - vCount].color
-                        loop[color_layer] = color
+                        loop[color_layer] = [(c / 255) for c in color]
                     
                     #we need to flip the direction for the next face
                     direction *= -1
@@ -797,9 +831,8 @@ class importCCS:
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
     
-    def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, vCount): 
+    def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, color_layer, vCount): 
         
-        color_layer = bm.loops.layers.color.new(f"Color")
         
         if not model.lookupList:
             bones = [bone for bone in clump.bones.values()]
@@ -1182,7 +1215,9 @@ class importCCS:
 
                                 data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
                                 
-                                self.insertFrames(action, targetShapeKey.name, data_path, anim.morphs[morphF][target], 1)
+                                morph_values = {f: [1 - anim.morphs[morphF][target][f][0]] for f in anim.morphs[morphF][target].keys()}
+                                
+                                self.insertFrames(action, targetShapeKey.name, data_path, morph_values, 1)
                     #except:
                     #    print(f"Error at {targetShapeKey.name}")
 
