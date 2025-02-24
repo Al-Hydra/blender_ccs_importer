@@ -1210,7 +1210,10 @@ class importCCS:
 
                             if targetModelBlender:
                                 for i in range(len(targetModelBlender.data.vertices)):
-                                    targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                                    try:
+                                        targetShapeKey.data[i].co = targetModelBlender.data.vertices[i].co
+                                    except:
+                                        print(f"Error at {targetShapeKey.name}")
                     
 
                                 data_path = f'data.shape_keys.key_blocks["{targetShapeKey.name}"].value'
@@ -1319,10 +1322,10 @@ class importCCS:
                 scaleX_value = blender_mat["uvOffset"][2]
                 scaleY_value = blender_mat["uvOffset"][3]
                 
-                offsetsX = {f: [v] for f, v in mat.offsetX.items()}
-                offsetsY = {f: [1 - (v)] for f, v in mat.offsetY.items()}
-                scalesX = {f: [v + scaleX_value] for f, v in mat.scaleX.items()}
-                scalesY = {f: [v + scaleY_value] for f, v in mat.scaleY.items()}
+                offsetsX = {f: [v - offsetX_value] for f, v in mat.offsetX.items()}
+                offsetsY = {f: [v - offsetY_value] for f, v in mat.offsetY.items()}
+                scalesX = {f: [1 + scaleX_value - v] for f, v in mat.scaleX.items()}
+                scalesY = {f: [1 + scaleY_value - v] for f, v in mat.scaleY.items()}
                 
                 data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
@@ -1332,31 +1335,7 @@ class importCCS:
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
                 data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
-                
-                '''for ofsX in mat.offsetX.keys():
-                    mat_props.uvOffset[0] = mat.offsetX[ofsX] - offsetX_value
-                    UV_node.inputs[1].keyframe_insert('default_value', frame= ofsX)
-                
-                for ofsY in mat.offsetY.keys():
-                    UV_node.inputs[2].default_value = mat.offsetY[ofsY] - offsetY_value 
-                    UV_node.inputs[2].keyframe_insert('default_value', frame= ofsY)'''
-                
-                '''for sclX in mat.scaleX.keys():
-                    ccsShader.inputs["X Scale"].default_value = mat.scaleX[sclX] + scaleX_value 
-                    ccsShader.inputs["X Scale"].keyframe_insert('default_value', frame= sclX)
-                
-                for sclY in mat.scaleY.keys():
-                    ccsShader.inputs["Y Scale"].default_value = mat.scaleY[sclY] + scaleY_value 
-                    ccsShader.inputs["Y Scale"].keyframe_insert('default_value', frame= sclY)'''
-                
-                '''material_action = blender_mat.node_tree.animation_data.action
 
-                if material_action:
-                    material_action.name = f"{action.name} ({mat.name})"
-                    for fcurve in material_action.fcurves:
-                        for keyframe in fcurve.keyframe_points:
-                            keyframe.interpolation = 'LINEAR'''
-        
         
         for mat in anim.materials.keys():
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
