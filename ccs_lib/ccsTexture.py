@@ -9,6 +9,7 @@ class textureTypes(Enum):
     Indexed8 = 0x13
     Indexed4 = 0x14
     DXT1 = 0x87
+    DXT3 = 0x88
     DXT5 = 0x89
 
 class ccsTexture(BrStruct):
@@ -45,8 +46,8 @@ class ccsTexture(BrStruct):
             self.width = br.read_uint16()
             self.height = br.read_uint16()
             self.unk3 = br.read_uint16()
-        elif self.textureType == 0x87 or self.textureType == 0x89:
-            br.seek(8,1)
+        elif self.textureType == 0x87 or self.textureType == 0x88 or self.textureType == 0x89:
+            br.seek(4,1)
             self.btx = br.read_struct(btxTexture)
             self.width = self.btx.width
             self.height = self.btx.height
@@ -77,6 +78,7 @@ class ccsTexture(BrStruct):
 
 btxFourCC = {
     7 : 'DXT1',
+    8 : 'DXT3',
     9 : 'DXT5'
 }
 
@@ -91,6 +93,7 @@ class btxTexture(BrStruct):
         self.textureData = b''
 
     def __br_read__(self, br: BinaryReader):
+        totalSizeBTX = br.read_uint32()
         magic = br.read_str(4)
         try:
             magic == "btx"
@@ -108,7 +111,8 @@ class btxTexture(BrStruct):
         totalSize = br.read_uint32()
         br.seek(12,1)
         self.name = br.read_str(16)
-        self.textureData = br.read_bytes((totalSize - headerSize))
+        #self.textureData = br.read_bytes((totalSize - headerSize))
+        self.textureData = br.read_bytes((totalSizeBTX - 0x40))
 
 
 def bmxToDDS(bmx:btxTexture):
