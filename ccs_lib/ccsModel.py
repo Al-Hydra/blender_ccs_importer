@@ -15,7 +15,7 @@ class RigidMesh(BrStruct):
         self.unk = 0
         self.parent = None
         self.vertices = []
-    def __br_read__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110):
+    def __br_read__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110, tanBinFlag = 0):
         self.parentIndex = br.read_uint32()
         self.materialIndex = br.read_uint32()
         self.vertexCount = br.read_uint32()
@@ -41,6 +41,13 @@ class RigidMesh(BrStruct):
             else:
                 for v in self.vertices:
                     v.UV = (br.read_int16() / 256, br.read_int16() / 256)
+
+        if tanBinFlag:
+            for v in self.vertices:
+                vertex.Tangent = tuple((map(lambda x: x/64, br.read_int8(3))))
+                vertex.Tangent_triangleFlag = br.read_int8()
+                vertex.Binormal = tuple((map(lambda x: x/64, br.read_int8(3))))
+                vertex.Binormal_triangleFlag = br.read_int8()
 
     
     def finalize(self, chunks):
@@ -360,7 +367,7 @@ class ccsModel(BrStruct):
 
             else:
                 for i in range(self.meshCount):
-                    rigidmesh = br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version)
+                    rigidmesh = br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version, self.tangentBinormalsFlag)
                     self.meshes.append(rigidmesh)
     
     def finalize(self, chunks):
