@@ -43,7 +43,7 @@ class RigidMesh(BrStruct):
                     v.UV = (br.read_int16() / 256, br.read_int16() / 256)
 
         if tanBinFlag:
-            for v in self.vertices:
+            for vertex in self.vertices:
                 vertex.Tangent = tuple((map(lambda x: x/64, br.read_int8(3))))
                 vertex.Tangent_triangleFlag = br.read_int8()
                 vertex.Binormal = tuple((map(lambda x: x/64, br.read_int8(3))))
