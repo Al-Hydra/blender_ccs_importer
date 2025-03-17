@@ -1378,34 +1378,6 @@ class importCCS:
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
 
-                '''for frame, values in anim.materials[mat].items():
-                    UV_node.inputs[1].default_value = values[0] - offsetX_value
-                    UV_node.inputs[1].keyframe_insert('default_value', frame= frame)
-
-                    UV_node.inputs[2].default_value = 1 - (values[1] - offsetY_value)
-                    UV_node.inputs[2].keyframe_insert('default_value', frame= frame)
-
-                if values[2] == 1:
-                    UV_node.inputs[3].default_value = 1
-                    UV_node.inputs[3].keyframe_insert('default_value', frame= frame)
-                else:
-                    UV_node.inputs[3].default_value = 1 + values[2] - scaleX_value
-                    UV_node.inputs[3].keyframe_insert('default_value', frame= frame)
-                if values[3] == 1:
-                    UV_node.inputs[4].default_value = 1
-                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)
-                else:
-                    UV_node.inputs[4].default_value = 1 + values[3] - scaleY_value
-                    UV_node.inputs[4].keyframe_insert('default_value', frame= frame)'''
-
-                
-                '''material_action = blender_mat.node_tree.animation_data.action
-
-                if material_action:
-                    material_action.name = f"{action.name} ({mat})"
-                    for fcurve in material_action.fcurves:
-                        for keyframe in fcurve.keyframe_points:
-                            keyframe.interpolation = 'LINEAR'''
 
 
     def convertEulerRotation(self, keyframes, brot):
