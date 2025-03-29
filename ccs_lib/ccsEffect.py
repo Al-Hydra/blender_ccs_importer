@@ -1,4 +1,5 @@
 from .utils.PyBinaryReader.binary_reader import *
+from .Eff import makeEffect, makeMaterial
 
 
 class ccsEffect(BrStruct):
@@ -11,6 +12,8 @@ class ccsEffect(BrStruct):
         self.object = None
         self.parent = None
         self.model = None
+        self.material = None
+        self.clump = None
 
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
@@ -18,17 +21,40 @@ class ccsEffect(BrStruct):
         self.path = indexTable.Names[self.index][1]
 
         self.textureIndex = br.read_uint32()
-        self.objectIndex = br.read_uint32()
+        self.matFlags1 = br.read_uint8() | 0x40
+        self.matFlags2 = br.read_uint8()
+        if version < 0x122:
+            unk0 = br.read_int16()  # f == i16
+        else:
+            unk0 = br.read_int16() * 0.00390625  # f == i16 * 0.00390625
+            
         unk1 = br.read_int16()
         count = br.read_int16()
-        minSomething = br.read_float(2)
-        maxSomething = br.read_float(2)
         
-        effectInfo = br.read_bytes(8 * count + 4)
+        self.vOffset_Left = br.read_float()     * 0.01  #verts 0, 2
+        self.vOffset_Bottem = br.read_float()   * 0.01  #verts 0, 1
+        self.vOffset_Right = br.read_float()    * 0.01  #verts 1, 3
+        self.vOffset_Top = br.read_float()      * 0.01  #verts 2, 3
         
+        self.scaledX = br.read_int16() * 0.0002441406
+        self.scaledY = br.read_int16() * 0.0002441406
         
+        self.frameInfo = [br.read_struct(EffectFrame) for f in range(count)]
     
     def finalize(self, chunks):
-        self.object = chunks.get(self.objectIndex)
+        self.texture = chunks.get(self.textureIndex)
+        makeEffect(self)
+        makeMaterial(self)
+        #self.object = chunks.get(self.index)
 
+class EffectFrame(BrStruct):
+    def __init__(self):
+        self.offsetX = 0
+        self.offsetY = 0
+        self.Alpha = 1
         
+    def __br_read__(self, br: BinaryReader):
+        self.offsetX = br.read_int16() * 0.0002441406
+        self.offsetY = br.read_int16() * 0.0002441406
+        self.Alpha = float(br.read_int16())
+        br.seek(2, 1)
