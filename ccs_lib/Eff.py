@@ -33,13 +33,13 @@ class EffectVertex:
         self.UV = [0, 0]
         if v == 0:
             self.position = [effect.vOffset_Left, effect.vOffset_Bottem, 0]
-            self.UV = [effect.scaledX + effect.frameInfo[0].offsetX, effect.scaledY + effect.frameInfo[0].offsetY]
+            self.UV = [0, 0]
         elif v == 1:
             self.position = [effect.vOffset_Right, effect.vOffset_Bottem, 0]
-            self.UV = [0 + effect.frameInfo[0].offsetX, effect.scaledY + effect.frameInfo[0].offsetY]
+            self.UV = [effect.scaledX, 0]
         elif v == 2:
             self.position = [effect.vOffset_Left, effect.vOffset_Top, 0]
-            self.UV = [effect.scaledX + effect.frameInfo[0].offsetX, 0 + effect.frameInfo[0].offsetY]
+            self.UV = [0, effect.scaledY]
         else:
             self.position = [effect.vOffset_Right, effect.vOffset_Top, 0]
-            self.UV = [0 + effect.frameInfo[0].offsetX, 0 + effect.frameInfo[0].offsetY]
+            self.UV = [effect.scaledX, effect.scaledY]
