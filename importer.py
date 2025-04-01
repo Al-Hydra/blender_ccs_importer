@@ -82,6 +82,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
+    import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -226,6 +227,7 @@ class DropCCS(Operator):
     import_all_textures: BoolProperty(name = "Import All textures", default = True) #type: ignore
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
+    import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -397,7 +399,22 @@ class importCCS:
                         
                         if extChunk.clump:
                             self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
+
         
+        if self.import_effects:
+            #Effect Objects
+            for effChunk in self.ccsf.sortedChunks["Effect"]:
+                bObject = bpy.data.objects.new(effChunk.name, None)
+                bObject.empty_display_size = 0.01
+                self.emptiesCollection.objects.link(bObject)
+                effectClump = bpy.data.objects.get(effChunk.clump.name) if effChunk.clump else None
+                if effectClump:
+                    bObject["clump"] = effChunk.clump.name
+                            
+                if effChunk.model:
+                    bObject["model"] = effChunk.model.name
+                    self.makeEffects(effChunk.model, effChunk.clump, effChunk.name)
+      
 
         if self.import_morphs:
             #morph chunks
@@ -464,6 +481,94 @@ class importCCS:
             if streamChunk.frameCount > 1:
                 self.makeAction(streamChunk)
 
+
+
+    def makeEffects(self, model, clump, parentBone):
+        model_name = model.name
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new(f"UV")
+        vgroup_layer = bm.verts.layers.deform.new("Weights")
+        color_layer = bm.loops.layers.color.new(f"Color")
+        direction = 1
+        
+        blender_mesh = bpy.data.meshes.new(f'{model_name}')
+        obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
+
+        if clump:
+            #find the armature and add all the bones to a dict
+            armature = bpy.data.objects.get(clump.name)
+            obj.parent = armature
+            bone_indices = {}
+            for i in range(len(armature.pose.bones)):
+                obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                bone_indices[armature.pose.bones[i].name] = i
+
+            #get bone matrix
+            for b in clump.bones.values():
+                if b.name == parentBone:
+                    vertex_matrix = Matrix(b.matrix)
+                    #print(f'vertex_matrix {vertex_matrix}') 
+            
+            for i, v in enumerate(model.mesh.vertices):
+                #print(f'vertex_matrix {vertex_matrix} @ vp {v.position}') 
+                vp = vertex_matrix @ Vector(v.position)
+                bmVertex = bm.verts.new(vp)   
+        else:
+            for i, v in enumerate(model.mesh.vertices):
+                bmVertex = bm.verts.new(v.position)   
+            
+        bm.verts.ensure_lookup_table()
+        bm.verts.index_update()
+
+        for i in range(2):
+            if direction == 1:
+                face = bm.faces.new((bm.verts[i-2], bm.verts[i], bm.verts[i-1]))
+                triUV1 = model.mesh.vertices[i-2].UV
+                triUV2 = model.mesh.vertices[i].UV
+                triUV3 = model.mesh.vertices[i-1].UV
+            else:
+                face = bm.faces.new((bm.verts[i-2], bm.verts[i-1], bm.verts[i]))
+                triUV1 = model.mesh.vertices[i-2].UV
+                triUV2 = model.mesh.vertices[i-1].UV
+                triUV3 = model.mesh.vertices[i].UV
+
+            face.loops[0][uv_layer].uv = triUV1
+            face.loops[1][uv_layer].uv = triUV2
+            face.loops[2][uv_layer].uv = triUV3
+                    
+            face.loops[0][color_layer] = 1, 1, 1, 1
+            face.loops[1][color_layer] = 1, 1, 1, 1
+            face.loops[2][color_layer] = 1, 1, 1, 1
+            
+            face.smooth = True
+            direction *= -1
+            
+        bm.faces.ensure_lookup_table()
+        bm.to_mesh(blender_mesh)
+
+        obj["emissive"] = 0
+        obj["invert_colors"] = 0
+        obj["opacity"] = 1
+        if model.matFlags1 & 1:
+            obj["emissive"] = 1
+        elif model.matFlags1 & 2:
+            obj["emissive"] = 1
+            obj["invert_colors"] = 1
+            
+        mat = self.makeMaterial(model, model.mesh)
+        if obj["emissive"]:
+            mat.surface_render_method = 'BLENDED'
+            mat.use_transparency_overlap = True
+        mat_slot = obj.material_slots.get(mat.name)
+        #print(f'mat{mat}, mat_slot {mat_slot}')
+        if mat_slot:
+            matIndex = mat_slot.slot_index
+        else:
+            obj.data.materials.append(mat)
+            mat_slot = obj.material_slots.get(mat.name)
+            matIndex = mat_slot.slot_index
+
+        self.collection.objects.link(obj)
 
 
     def makeModels(self, model, clump, parentBone):
@@ -619,7 +724,7 @@ class importCCS:
                     color_layer = bm.loops.layers.color.new(f"Color")
                     vgroup_layer = bm.verts.layers.deform.new("Weights")
                     vCount = 0
-
+                    
                     for m, mesh in enumerate(model.meshes):
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
