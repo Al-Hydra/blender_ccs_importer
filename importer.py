@@ -407,13 +407,24 @@ class importCCS:
                 bObject = bpy.data.objects.new(effChunk.name, None)
                 bObject.empty_display_size = 0.01
                 self.emptiesCollection.objects.link(bObject)
-                effectClump = bpy.data.objects.get(effChunk.clump.name) if effChunk.clump else None
+                effectClump = bpy.data.objects.get(effChunk.clump.name) if effChunk.clump else None      
                 if effectClump:
                     bObject["clump"] = effChunk.clump.name
+                    print(f'clump.name {effChunk.clump.name}')
+                
+                    if effChunk.parent:
+                        #bObject.parent_type = "BONE"
+                        #bObject.parent_bone = objChunk.parent.name
+                        bObject["parent"] = effChunk.parent.name
+                        print(f'effChunk.parent.name {effChunk.parent.name}')
                             
                 if effChunk.model:
                     bObject["model"] = effChunk.model.name
                     self.makeEffects(effChunk.model, effChunk.clump, effChunk.name)
+                    frames = effChunk.frameCount
+                    print(f'frameCount {frames}')
+                    if frames:
+                        self.makeEffectAction(effChunk)
       
 
         if self.import_morphs:
@@ -497,17 +508,19 @@ class importCCS:
         if clump:
             #find the armature and add all the bones to a dict
             armature = bpy.data.objects.get(clump.name)
+            print(f'armature {armature}')
             obj.parent = armature
             bone_indices = {}
             for i in range(len(armature.pose.bones)):
                 obj.vertex_groups.new(name = armature.pose.bones[i].name)
                 bone_indices[armature.pose.bones[i].name] = i
+                print(f'bone_indices {armature.pose.bones[i].name}')
 
             #get bone matrix
             for b in clump.bones.values():
                 if b.name == parentBone:
                     vertex_matrix = Matrix(b.matrix)
-                    #print(f'vertex_matrix {vertex_matrix}') 
+                    print(f'vertex_matrix {vertex_matrix}') 
             
             for i, v in enumerate(model.mesh.vertices):
                 #print(f'vertex_matrix {vertex_matrix} @ vp {v.position}') 
@@ -515,7 +528,7 @@ class importCCS:
                 bmVertex = bm.verts.new(vp)   
         else:
             for i, v in enumerate(model.mesh.vertices):
-                bmVertex = bm.verts.new(v.position)   
+                bmVertex = bm.verts.new(v.position)
             
         bm.verts.ensure_lookup_table()
         bm.verts.index_update()
@@ -569,6 +582,7 @@ class importCCS:
             matIndex = mat_slot.slot_index
 
         self.collection.objects.link(obj)
+
 
 
     def makeModels(self, model, clump, parentBone):
@@ -937,8 +951,6 @@ class importCCS:
         return meshdata
     
     def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, color_layer, vCount): 
-        
-        
         if not model.lookupList:
             bones = [bone for bone in clump.bones.values()]
         else:
@@ -1017,8 +1029,6 @@ class importCCS:
         
         #clean up the mesh
         #bmesh.ops.remove_doubles(bm, verts= bm.verts, dist= 0.000001)
-
-
 
 
     def makeClump(self, cmp):
@@ -1155,7 +1165,7 @@ class importCCS:
             posebone = armatureObj.pose.bones.get(target_bone)
 
             if not posebone:
-                continue    
+                continue
 
             bone = armatureObj.data.bones.get(posebone.name)
 
@@ -1284,8 +1294,7 @@ class importCCS:
             self.insertFrames(action, group_name, data_path, scales, 3)
             
             data_path = f'{bone_path}.{"opacity"}'
-            self.insertFrames(action, group_name, data_path, opacity_dict, 1)
-            
+            self.insertFrames(action, group_name, data_path, opacity_dict, 1)            
             
         
         
@@ -1482,6 +1491,43 @@ class importCCS:
                 self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
                 self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
+
+
+
+    def makeEffectAction(self, effChunk):
+        action = bpy.data.actions.new(effChunk.name)
+        mat = effChunk.model.mesh.material
+        print(f"mat {mat.name}")
+        bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
+        if bmats:
+            print(f"bmats {bmats}")
+            blender_mat = bmats[0]
+            group_name = blender_mat.name
+            
+            material_action = bpy.data.actions.new(f"{action.name} ({mat})")
+            blender_mat.animation_data_create()
+            blender_mat.animation_data.action = material_action
+            print(f"material_action {material_action.name}")
+                        
+            offsetX_value = blender_mat["uvOffset"][0]
+            offsetY_value = blender_mat["uvOffset"][1]
+
+            data_path = f'{"ccs_material.uvOffset"}'
+            offsetsX = {}
+            offsetsY = {}
+            opacity_dict = {}
+            print(f"effect.model.name {effChunk.model.name}")
+            print(f"frame count {effChunk.frameCount}")
+                            
+            for i, frameInfo in enumerate(effChunk.frameInfo):
+                frame = effChunk.frameInfo[i]
+                print(f"frameNum {i}")
+                offsetsX[i] = [frame.offsetX + offsetX_value]
+                offsetsY[i] = [frame.offsetY + offsetY_value]
+                opacity_dict[i] = [frame.opacity]
+                        
+            self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
+            self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
 
 
 

@@ -14,6 +14,7 @@ class ccsEffect(BrStruct):
         self.model = None
         self.material = None
         self.clump = None
+        self.frameCount = 0
 
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
@@ -29,7 +30,7 @@ class ccsEffect(BrStruct):
             unk0 = br.read_int16() * 0.00390625  # f == i16 * 0.00390625
             
         unk1 = br.read_int16()
-        count = br.read_int16()
+        self.frameCount = br.read_int16()
         
         self.vOffset_Left = br.read_float()     * 0.01  #verts 0, 2
         self.vOffset_Bottem = br.read_float()   * 0.01  #verts 0, 1
@@ -39,7 +40,7 @@ class ccsEffect(BrStruct):
         self.scaledX = br.read_int16() * 0.0002441406
         self.scaledY = br.read_int16() * 0.0002441406
         
-        self.frameInfo = [br.read_struct(EffectFrame) for f in range(count)]
+        self.frameInfo = [br.read_struct(EffectFrame) for f in range(self.frameCount)]
     
     def finalize(self, chunks):
         self.texture = chunks.get(self.textureIndex)
@@ -56,5 +57,5 @@ class EffectFrame(BrStruct):
     def __br_read__(self, br: BinaryReader):
         self.offsetX = br.read_int16() * 0.0002441406
         self.offsetY = br.read_int16() * 0.0002441406
-        self.Alpha = float(br.read_int16())
+        self.opacity = float(br.read_int16())
         br.seek(2, 1)
