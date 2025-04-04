@@ -416,13 +416,13 @@ class importCCS:
                         #bObject.parent_type = "BONE"
                         #bObject.parent_bone = objChunk.parent.name
                         bObject["parent"] = effChunk.parent.name
-                        print(f'effChunk.parent.name {effChunk.parent.name}')
+                        #print(f'effChunk.parent.name {effChunk.parent.name}')
                             
                 if effChunk.model:
                     bObject["model"] = effChunk.model.name
                     self.makeEffects(effChunk.model, effChunk.clump, effChunk.name)
                     frames = effChunk.frameCount
-                    print(f'frameCount {frames}')
+                    #print(f'frameCount {frames}')
                     if frames:
                         self.makeEffectAction(effChunk)
       
@@ -1507,7 +1507,7 @@ class importCCS:
             material_action = bpy.data.actions.new(f"{action.name} ({mat})")
             blender_mat.animation_data_create()
             blender_mat.animation_data.action = material_action
-            print(f"material_action {material_action.name}")
+            #print(f"material_action {material_action.name}")
                         
             offsetX_value = blender_mat["uvOffset"][0]
             offsetY_value = blender_mat["uvOffset"][1]
@@ -1521,7 +1521,7 @@ class importCCS:
                             
             for i, frameInfo in enumerate(effChunk.frameInfo):
                 frame = effChunk.frameInfo[i]
-                print(f"frameNum {i}")
+                #print(f"frameNum {i}")
                 offsetsX[i] = [frame.offsetX + offsetX_value]
                 offsetsY[i] = [frame.offsetY + offsetY_value]
                 opacity_dict[i] = [frame.opacity]
