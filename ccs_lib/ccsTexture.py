@@ -59,6 +59,13 @@ class ccsTexture(BrStruct):
             self.textureDataSize = br.read_uint32()
             self.textureData = br.read_uint8(self.textureDataSize << 2)
 
+            #Skip mip levels
+            for i in range(self.mipmapsCount):
+                
+                br.read_uint32()
+                mipSize = br.read_uint32() << 2
+                br.seek(mipSize, Whence.CUR)
+
     
     def convertTexture(self, rawPixels = False):
         if self.btx:
