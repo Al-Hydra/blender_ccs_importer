@@ -720,54 +720,54 @@ class importCCS:
                         obj["invert_colors"] = 1
                     
                     #find the armature and add all the bones to a dict
-                    if not hasattr(clump, "name"):
-                        breakpoint()
-                    armature = bpy.data.objects.get(clump.name)
-                    parent = armature.data.bones.get(parentBone)
-                    if not parent:
-                        parent = armature.data.bones[0]
-
-                    bone_indices = {}
-                    for i in range(len(armature.pose.bones)):
-                        obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                        bone_indices[armature.pose.bones[i].name] = i
-                    
-                    normals = []
-                    bm = bmesh.new()
-                    uv_layer = bm.loops.layers.uv.new(f"UV")
-                    color_layer = bm.loops.layers.color.new(f"Color")
-                    vgroup_layer = bm.verts.layers.deform.new("Weights")
-                    vCount = 0
-                    
-                    for m, mesh in enumerate(model.meshes):
-                        #add the mesh material
-                        mat = self.makeMaterial(model, mesh)
-                        if obj["emissive"]:
-                            mat.surface_render_method = 'BLENDED'
-                            mat.use_transparency_overlap = True
-                        mat_slot = obj.material_slots.get(mat.name)
-                        if mat_slot:
-                            matIndex = mat_slot.slot_index
-                        else:
-                            obj.data.materials.append(mat)
-                            mat_slot = obj.material_slots.get(mat.name)
-                            matIndex = mat_slot.slot_index
+                    if hasattr(clump, "name"):
                         
-                        self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, uv_layer, color_layer, vgroup_layer, vCount)
-                        vCount = len(bm.verts)
-                    
-                    bm.to_mesh(meshdata)
-                    
-                    meshdata.normals_split_custom_set_from_vertices(normals)
+                        armature = bpy.data.objects.get(clump.name)
+                        parent = armature.data.bones.get(parentBone)
+                        if not parent:
+                            parent = armature.data.bones[0]
 
-                    obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                    obj.modifiers['Armature'].object = armature
-                    #set the active color layer
-                    meshdata.vertex_colors.active = meshdata.vertex_colors[0]
+                        bone_indices = {}
+                        for i in range(len(armature.pose.bones)):
+                            obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                            bone_indices[armature.pose.bones[i].name] = i
+                        
+                        normals = []
+                        bm = bmesh.new()
+                        uv_layer = bm.loops.layers.uv.new(f"UV")
+                        color_layer = bm.loops.layers.color.new(f"Color")
+                        vgroup_layer = bm.verts.layers.deform.new("Weights")
+                        vCount = 0
+                        
+                        for m, mesh in enumerate(model.meshes):
+                            #add the mesh material
+                            mat = self.makeMaterial(model, mesh)
+                            if obj["emissive"]:
+                                mat.surface_render_method = 'BLENDED'
+                                mat.use_transparency_overlap = True
+                            mat_slot = obj.material_slots.get(mat.name)
+                            if mat_slot:
+                                matIndex = mat_slot.slot_index
+                            else:
+                                obj.data.materials.append(mat)
+                                mat_slot = obj.material_slots.get(mat.name)
+                                matIndex = mat_slot.slot_index
+                            
+                            self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, uv_layer, color_layer, vgroup_layer, vCount)
+                            vCount = len(bm.verts)
+                        
+                        bm.to_mesh(meshdata)
+                        
+                        meshdata.normals_split_custom_set_from_vertices(normals)
 
-                    obj.parent = armature
+                        obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                        obj.modifiers['Armature'].object = armature
+                        #set the active color layer
+                        meshdata.vertex_colors.active = meshdata.vertex_colors[0]
 
-                    self.collection.objects.link(obj)
+                        obj.parent = armature
+
+                        self.collection.objects.link(obj)
 
 
     def makeMaterial(self, model, mesh):
