@@ -30,6 +30,7 @@ class ccsFile(BrStruct):
         self.version = 0
         self.indexTable = None
         self.chunks = {}
+        self.chunks2 = {}
 
     def __br_read__(self, br: BinaryReader):
         #read the header
@@ -70,7 +71,11 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
 
             self.sortedChunks[chunkData.type].append(chunkData)
-            self.chunks[chunkData.index] = chunkData
+            #sort obj2 chunks separetly as there index overlaps with companion chunks
+            if chunkData.type == "AnimationObject":
+                self.chunks2[chunkData.index] = chunkData
+            else:
+                self.chunks[chunkData.index] = chunkData
 
             index += 1
         
@@ -79,7 +84,12 @@ class ccsFile(BrStruct):
 
         #finalize initialization
         for chunk in self.chunks.values():
-            chunk.finalize(self.chunks)
+            #make obj2/chunks2 data avalible to effect chunks with out effecting other chunks finalize
+            if chunk.type == "Effect":
+                chunk.finalize(self.chunks, self.chunks2)
+            else:
+                chunk.finalize(self.chunks)
+                
             asset = chunk.path
             self.assets[asset].append(chunk)
     
@@ -146,7 +156,8 @@ class ccsChunk(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
         self.data = br.read_bytes(size - 4)
-    def finalize(self, chunks):
+    #def finalize(self, chunks):
+    def finalize(self, chunks, chunks2=None):
         pass
 
 

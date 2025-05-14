@@ -10,6 +10,7 @@ class ccsEffect(BrStruct):
         self.path = ""
         self.texture = None
         self.object = None
+        self.AnmObject = None
         self.parent = None
         self.model = None
         self.material = None
@@ -45,8 +46,10 @@ class ccsEffect(BrStruct):
     def finalize(self, chunks):
         self.texture = chunks.get(self.textureIndex)
         makeEffect(self)
-        makeMaterial(self)
-        #self.object = chunks.get(self.index)
+        makeMaterial(self.model, self.texture)
+        self.AnmObject = chunks2.get(self.index)
+        if self.AnmObject:
+            self.AnmObject.parent = chunks.get(self.AnmObject.parentIndex)
 
 class EffectFrame(BrStruct):
     def __init__(self):
