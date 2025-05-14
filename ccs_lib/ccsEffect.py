@@ -43,7 +43,7 @@ class ccsEffect(BrStruct):
         
         self.frameInfo = [br.read_struct(EffectFrame) for f in range(self.frameCount)]
     
-    def finalize(self, chunks):
+    def finalize(self, chunks, chunks2):
         self.texture = chunks.get(self.textureIndex)
         makeEffect(self)
         makeMaterial(self.model, self.texture)
