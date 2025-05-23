@@ -83,6 +83,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
+    effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
 
     
     def execute(self, context):
@@ -157,6 +158,13 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
             row.prop(self, "import_morphs")
         
         row = layout.row()
+        row.prop(self, "import_effects")
+        
+        if self.import_effects:
+            row = layout.row()
+            row.prop(self, "effects_track_camera")
+        
+        row = layout.row()
         row.prop(self, "import_cameras")
         row = layout.row()
         row.prop(self, "import_all_textures")
@@ -228,6 +236,7 @@ class DropCCS(Operator):
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
+    effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
 
     
     def execute(self, context):
@@ -402,25 +411,25 @@ class importCCS:
 
         
         if self.import_effects:
-            #Effect Objects
+            #Effects
             for effChunk in self.ccsf.sortedChunks["Effect"]:
-                bObject = bpy.data.objects.new(effChunk.name, None)
-                bObject.empty_display_size = 0.01
-                self.emptiesCollection.objects.link(bObject)
                 effectClump = bpy.data.objects.get(effChunk.clump.name) if effChunk.clump else None      
                 if effectClump:
-                    bObject["clump"] = effChunk.clump.name
-                    print(f'clump.name {effChunk.clump.name}')
-                
-                    if effChunk.parent:
-                        #bObject.parent_type = "BONE"
-                        #bObject.parent_bone = objChunk.parent.name
-                        bObject["parent"] = effChunk.parent.name
-                        #print(f'effChunk.parent.name {effChunk.parent.name}')
-                            
-                if effChunk.model:
-                    bObject["model"] = effChunk.model.name
-                    self.makeEffects(effChunk.model, effChunk.clump, effChunk.name)
+                    if effChunk.model:
+                        self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
+                        #print(f'import | Perant.bone {effChunk.name}')
+                        
+                else:
+                    #Set Reference bone
+                    if effChunk.AnmObject.parent.type == "ExternalObject":
+                        #for extChunk in self.ccsf.sortedChunks["ExternalObject"]:
+                        for objChunk in self.ccsf.sortedChunks["Object"]:
+                            if effChunk.AnmObject.parent.name == objChunk.name:
+                                if effChunk.model:
+                                    self.makeEffects(effChunk.model, None, objChunk.clump, objChunk.name)
+                                    #print(f'import | Perant.bone {objChunk.name}')
+                           
+                if self.import_animations and effChunk.model:
                     frames = effChunk.frameCount
                     #print(f'frameCount {frames}')
                     if frames:
@@ -494,42 +503,59 @@ class importCCS:
 
 
 
-    def makeEffects(self, model, clump, parentBone):
+    def makeEffects(self, model, effClump, objClump, parentBone):
+        
+        #create camera for effects camera helper
+        if self.effects_track_camera:
+            self.makeEffCamera()
+        
         model_name = model.name
         bm = bmesh.new()
         uv_layer = bm.loops.layers.uv.new(f"UV")
-        vgroup_layer = bm.verts.layers.deform.new("Weights")
+        #vgroup_layer = bm.verts.layers.deform.new("Weights")
         color_layer = bm.loops.layers.color.new(f"Color")
         direction = 1
         
         blender_mesh = bpy.data.meshes.new(f'{model_name}')
         obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
 
-        if clump:
+        if effClump:
             #find the armature and add all the bones to a dict
-            armature = bpy.data.objects.get(clump.name)
-            print(f'armature {armature}')
+            armature = bpy.data.objects.get(effClump.name)
+            #print(f'armature {armature}')
             obj.parent = armature
             bone_indices = {}
             for i in range(len(armature.pose.bones)):
                 obj.vertex_groups.new(name = armature.pose.bones[i].name)
                 bone_indices[armature.pose.bones[i].name] = i
-                print(f'bone_indices {armature.pose.bones[i].name}')
+                #print(f'bone_indices {armature.pose.bones[i].name}')
 
             #get bone matrix
-            for b in clump.bones.values():
+            '''for b in effClump.bones.values():
                 if b.name == parentBone:
-                    vertex_matrix = Matrix(b.matrix)
-                    print(f'vertex_matrix {vertex_matrix}') 
+                    vertex_matrix = Matrix(b.matrix)'''
+                    #print(f'vertex_matrix {vertex_matrix}') 
             
             for i, v in enumerate(model.mesh.vertices):
                 #print(f'vertex_matrix {vertex_matrix} @ vp {v.position}') 
-                vp = vertex_matrix @ Vector(v.position)
+                #vp = vertex_matrix @ Vector(v.position)
+                vp = v.position
                 bmVertex = bm.verts.new(vp)   
         else:
+            armature = bpy.data.objects.get(objClump.name)
+            constraint = obj.constraints.new(type='CHILD_OF')
+            constraint.name = f'{parentBone}'
+            constraint.target = armature
+            constraint.subtarget = parentBone
+            
             for i, v in enumerate(model.mesh.vertices):
                 bmVertex = bm.verts.new(v.position)
-            
+        
+        #create effects cam helper constraint
+        if self.effects_track_camera:
+             #self.makeEffCamConstraint(obj, helper)
+             self.makeEffCamConstraint(obj)
+        
         bm.verts.ensure_lookup_table()
         bm.verts.index_update()
 
@@ -1151,64 +1177,107 @@ class importCCS:
                 if clump:
                     clump = clump.clump
                 else:
-                    continue
+                    #print(f"ccsAnmObj name {ccsAnmObj.name}, clump {ccsAnmObj.clump}")
+                    clump = None
+                    #continue
 
             if self.use_target_skeleton:
                 target_armature = bpy.data.objects.get(self.target_skeleton)
                 target_armature.animation_data_create()
                 target_armature.animation_data.action = action
 
-            armatureObj = bpy.data.objects.get(clump)
-
-            armatureObj.animation_data_create()
-            armatureObj.animation_data.action = action
-            posebone = armatureObj.pose.bones.get(target_bone)
-
-            if not posebone:
-                continue
-
-            bone = armatureObj.data.bones.get(posebone.name)
-
-            bloc = Vector(bone["original_coords"][0]) * 0.01
-            brot = Quaternion(bone["rotation_quat"])
-            bscale = Vector(bone["original_coords"][2])
-
-            group_name = action.groups.new(name = posebone.name).name
-            #group_name = posebone.name
-
-            if self.swap_names:
-                if ccsAnmObj.name.find(source) != -1:
-                    new_bone_name = posebone.name.replace(source, target)
-
-                    if self.slice_name:
-                        new_bone_name = new_bone_name[self.slice_count:]
-                    
-                    if self.use_target_skeleton:
-                        if target_armature.get(new_bone_name):
-                            new_bone_name = target_armature.get(new_bone_name)
-
-                    group_name = action.groups.new(name = new_bone_name).name
+            if clump:
+                armatureObj = bpy.data.objects.get(clump)
+    
+                armatureObj.animation_data_create()
+                armatureObj.animation_data.action = action
+                posebone = armatureObj.pose.bones.get(target_bone)
+    
+                if not posebone:
+                    continue
+    
+                bone = armatureObj.data.bones.get(posebone.name)
+    
+                bloc = Vector(bone["original_coords"][0]) * 0.01
+                brot = Quaternion(bone["rotation_quat"])
+                bscale = Vector(bone["original_coords"][2])
+    
+                group_name = action.groups.new(name = posebone.name).name
+                #group_name = posebone.name
+    
+                if self.swap_names:
+                    if ccsAnmObj.name.find(source) != -1:
+                        new_bone_name = posebone.name.replace(source, target)
+    
+                        if self.slice_name:
+                            new_bone_name = new_bone_name[self.slice_count:]
+                        
+                        if self.use_target_skeleton:
+                            if target_armature.get(new_bone_name):
+                                new_bone_name = target_armature.get(new_bone_name)
+    
+                        group_name = action.groups.new(name = new_bone_name).name
+                
+                bone_path = f'pose.bones["{group_name}"]'
+                
+                locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
+                data_path = f'{bone_path}.{"location"}'
+                self.insertFrames(action, group_name, data_path, locations, 3)
+                
+                #Rotations Euler
+                rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
+                data_path = f'{bone_path}.{"rotation_quaternion"}'
+                self.insertFrames(action, group_name, data_path, rotations, 4)
+                
+                #Rotations Quaternion
+                rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
+                
+                data_path = f'{bone_path}.{"rotation_quaternion"}'
+                self.insertFrames(action, group_name, data_path, rotations_quat, 4)
+        
+                scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
+                data_path = f'{bone_path}.{"scale"}'
+                self.insertFrames(action, group_name, data_path, scales, 3)
             
-            bone_path = f'pose.bones["{group_name}"]'
-
-            locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
-            data_path = f'{bone_path}.{"location"}'
-            self.insertFrames(action, group_name, data_path, locations, 3)
-            
-            #Rotations Euler
-            rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
-            data_path = f'{bone_path}.{"rotation_quaternion"}'
-            self.insertFrames(action, group_name, data_path, rotations, 4)
-            
-            #Rotations Quaternion
-            rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
-            
-            data_path = f'{bone_path}.{"rotation_quaternion"}'
-            self.insertFrames(action, group_name, data_path, rotations_quat, 4)
-
-            scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
-            data_path = f'{bone_path}.{"scale"}'
-            self.insertFrames(action, group_name, data_path, scales, 3)
+            if self.import_effects and ccsAnmObj.type == "Effect":
+                effect = bpy.data.objects[f'{ccsAnmObj.model.name}']
+                #effect["original_coords"] = [(1, 2, 3), (w, x, y, z), (1, 1, 1)]
+                effect["original_coords"] = [(0, 0, 0), (1, 0, 0, 0), (1, 1, 1)]
+                #effect["rotation_quat"] = (w, x, y, z)
+                effect["rotation_quat"] = (1.0, 0.0, 0.0, 0.0)  # (w, x, y, z)
+                print(f"import | effect name {effect.name}")
+                group_name = effect.name
+                effect.rotation_mode = 'QUATERNION'
+                
+                effect_action = bpy.data.actions.new(anim.name)
+                
+                #effect = bpy.data.objects.get(self.target_skeleton)
+                effect.animation_data_create()
+                effect.animation_data.action = effect_action
+                
+                #original_coords = effect["original_coords"]
+                bloc = Vector(effect["original_coords"][0]) * 0.01
+                brot = Quaternion(effect["rotation_quat"])
+                bscale = Vector(effect["original_coords"][2])
+                
+                locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
+                data_path = f'{"location"}'
+                self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                
+                #Rotations Euler
+                rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
+                data_path = f'{"rotation_quaternion"}'
+                self.insertFrames(effect_action, group_name, data_path, rotations, 4)
+                
+                #Rotations Quaternion
+                rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
+                data_path = f'{"rotation_quaternion"}'
+                self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
+        
+                scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
+                data_path = f'{"scale"}'
+                self.insertFrames(effect_action, group_name, data_path, scales, 3)
+                
         
         for obj in anim.objects.keys():
 
@@ -1497,10 +1566,10 @@ class importCCS:
     def makeEffectAction(self, effChunk):
         action = bpy.data.actions.new(effChunk.name)
         mat = effChunk.model.mesh.material
-        print(f"mat {mat.name}")
+        #print(f"mat {mat.name}")
         bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
         if bmats:
-            print(f"bmats {bmats}")
+            #print(f"bmats {bmats}")
             blender_mat = bmats[0]
             group_name = blender_mat.name
             
@@ -1516,8 +1585,8 @@ class importCCS:
             offsetsX = {}
             offsetsY = {}
             opacity_dict = {}
-            print(f"effect.model.name {effChunk.model.name}")
-            print(f"frame count {effChunk.frameCount}")
+            #print(f"effect.model.name {effChunk.model.name}")
+            #print(f"frame count {effChunk.frameCount}")
                             
             for i, frameInfo in enumerate(effChunk.frameInfo):
                 frame = effChunk.frameInfo[i]
@@ -1530,7 +1599,47 @@ class importCCS:
             self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
 
 
+    def makeEffCamera(self):
+        if not bpy.data.objects.get("Deafult_Camera"):
+            camera = bpy.data.cameras.new(name="Deafult_Camera")
+            cameraObj = bpy.data.objects.new("Deafult_Camera", camera)
+            bpy.context.collection.objects.link(cameraObj)
+            cameraObj.location = (14.73, -6.5, 9.5)
+            cameraObj.rotation_euler = (math.radians(63.5), 0, math.radians(66.2))
+            
+            if not bpy.data.objects.get("Camera_Helper"):
+                camHelperObj = bpy.data.objects.new("Camera_Helper", None)
+                bpy.context.collection.objects.link(camHelperObj)
+            
+                track_constraint = camHelperObj.constraints.new(type='TRACK_TO')
+                track_constraint.name = f'Track To: Camera'
+                track_constraint.target = cameraObj
+                track_constraint.track_axis = 'TRACK_Z'
+                track_constraint.up_axis = 'UP_Y'
 
+
+    def makeEffCamConstraint(self, effect):
+        
+        helper_constraint = effect.constraints.new(type='CHILD_OF')
+        helper_constraint.name = f'{effect.name}_helper'
+
+        if not bpy.data.objects.get("Camera_Helper"):
+           camHelperObj =  self.makeEffCamera()
+        else:
+            camHelperObj = bpy.data.objects.get("Camera_Helper")
+                
+        helper_constraint.target = camHelperObj
+        helper_constraint.use_location_x = False
+        helper_constraint.use_location_y = False
+        helper_constraint.use_location_z = False
+        helper_constraint.use_scale_x = False
+        helper_constraint.use_scale_y = False
+        helper_constraint.use_scale_z = False
+        
+        bpy.context.view_layer.update()
+        helper_constraint.inverse_matrix = effect.matrix_parent_inverse.copy()
+    
+    
     def convertEulerRotation(self, keyframes, brot):
         #Rotations Euler
         rotations = {}
