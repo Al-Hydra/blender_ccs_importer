@@ -83,6 +83,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
+    effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
 
     
     def execute(self, context):
@@ -157,6 +158,13 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
             row.prop(self, "import_morphs")
         
         row = layout.row()
+        row.prop(self, "import_effects")
+        
+        if self.import_effects:
+            row = layout.row()
+            row.prop(self, "effects_track_camera")
+        
+        row = layout.row()
         row.prop(self, "import_cameras")
         row = layout.row()
         row.prop(self, "import_all_textures")
@@ -228,6 +236,7 @@ class DropCCS(Operator):
     import_stream: BoolProperty(name = "Import Scenes (Stream Chunks)", default = True) #type: ignore
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
+    effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
 
     
     def execute(self, context):
@@ -408,7 +417,7 @@ class importCCS:
                 if effectClump:
                     if effChunk.model:
                         self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
-                        print(f'import | Perant.bone {effChunk.name}')
+                        #print(f'import | Perant.bone {effChunk.name}')
                         
                 else:
                     #Set Reference bone
@@ -418,9 +427,9 @@ class importCCS:
                             if effChunk.AnmObject.parent.name == objChunk.name:
                                 if effChunk.model:
                                     self.makeEffects(effChunk.model, None, objChunk.clump, objChunk.name)
-                                    print(f'import | Perant.bone {objChunk.name}')
+                                    #print(f'import | Perant.bone {objChunk.name}')
                            
-                if effChunk.model:
+                if self.import_animations and effChunk.model:
                     frames = effChunk.frameCount
                     #print(f'frameCount {frames}')
                     if frames:
@@ -495,6 +504,11 @@ class importCCS:
 
 
     def makeEffects(self, model, effClump, objClump, parentBone):
+        
+        #create camera for effects camera helper
+        if self.effects_track_camera:
+            self.makeEffCamera()
+        
         model_name = model.name
         bm = bmesh.new()
         uv_layer = bm.loops.layers.uv.new(f"UV")
@@ -536,7 +550,12 @@ class importCCS:
             
             for i, v in enumerate(model.mesh.vertices):
                 bmVertex = bm.verts.new(v.position)
-            
+        
+        #create effects cam helper constraint
+        if self.effects_track_camera:
+             #self.makeEffCamConstraint(obj, helper)
+             self.makeEffCamConstraint(obj)
+        
         bm.verts.ensure_lookup_table()
         bm.verts.index_update()
 
@@ -1220,7 +1239,7 @@ class importCCS:
                 data_path = f'{bone_path}.{"scale"}'
                 self.insertFrames(action, group_name, data_path, scales, 3)
             
-            if ccsAnmObj.type == "Effect":
+            if self.import_effects and ccsAnmObj.type == "Effect":
                 effect = bpy.data.objects[f'{ccsAnmObj.model.name}']
                 #effect["original_coords"] = [(1, 2, 3), (w, x, y, z), (1, 1, 1)]
                 effect["original_coords"] = [(0, 0, 0), (1, 0, 0, 0), (1, 1, 1)]
@@ -1547,10 +1566,10 @@ class importCCS:
     def makeEffectAction(self, effChunk):
         action = bpy.data.actions.new(effChunk.name)
         mat = effChunk.model.mesh.material
-        print(f"mat {mat.name}")
+        #print(f"mat {mat.name}")
         bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
         if bmats:
-            print(f"bmats {bmats}")
+            #print(f"bmats {bmats}")
             blender_mat = bmats[0]
             group_name = blender_mat.name
             
@@ -1566,8 +1585,8 @@ class importCCS:
             offsetsX = {}
             offsetsY = {}
             opacity_dict = {}
-            print(f"effect.model.name {effChunk.model.name}")
-            print(f"frame count {effChunk.frameCount}")
+            #print(f"effect.model.name {effChunk.model.name}")
+            #print(f"frame count {effChunk.frameCount}")
                             
             for i, frameInfo in enumerate(effChunk.frameInfo):
                 frame = effChunk.frameInfo[i]
@@ -1580,7 +1599,47 @@ class importCCS:
             self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
 
 
+    def makeEffCamera(self):
+        if not bpy.data.objects.get("Deafult_Camera"):
+            camera = bpy.data.cameras.new(name="Deafult_Camera")
+            cameraObj = bpy.data.objects.new("Deafult_Camera", camera)
+            bpy.context.collection.objects.link(cameraObj)
+            cameraObj.location = (14.73, -6.5, 9.5)
+            cameraObj.rotation_euler = (math.radians(63.5), 0, math.radians(66.2))
+            
+            if not bpy.data.objects.get("Camera_Helper"):
+                camHelperObj = bpy.data.objects.new("Camera_Helper", None)
+                bpy.context.collection.objects.link(camHelperObj)
+            
+                track_constraint = camHelperObj.constraints.new(type='TRACK_TO')
+                track_constraint.name = f'Track To: Camera'
+                track_constraint.target = cameraObj
+                track_constraint.track_axis = 'TRACK_Z'
+                track_constraint.up_axis = 'UP_Y'
 
+
+    def makeEffCamConstraint(self, effect):
+        
+        helper_constraint = effect.constraints.new(type='CHILD_OF')
+        helper_constraint.name = f'{effect.name}_helper'
+
+        if not bpy.data.objects.get("Camera_Helper"):
+           camHelperObj =  self.makeEffCamera()
+        else:
+            camHelperObj = bpy.data.objects.get("Camera_Helper")
+                
+        helper_constraint.target = camHelperObj
+        helper_constraint.use_location_x = False
+        helper_constraint.use_location_y = False
+        helper_constraint.use_location_z = False
+        helper_constraint.use_scale_x = False
+        helper_constraint.use_scale_y = False
+        helper_constraint.use_scale_z = False
+        
+        bpy.context.view_layer.update()
+        helper_constraint.inverse_matrix = effect.matrix_parent_inverse.copy()
+    
+    
     def convertEulerRotation(self, keyframes, brot):
         #Rotations Euler
         rotations = {}
