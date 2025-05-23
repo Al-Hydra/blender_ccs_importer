@@ -3,31 +3,32 @@ from .ccsClump import ccsClump
 from .ccsModel import ccsModel, RigidMesh
 from .ccsMaterial import ccsMaterial
 
-def makeEffect(effect):
-    effect.model = ccsModel()
-    effect.model.name = (f'{effect.name}_{effect.name.replace("EFF_", "MDL_")}')
-    effect.model.type = "Effect_Model"
-    effect.model.matFlags1 = effect.matFlags1
-    effect.model.matFlags2 = effect.matFlags2
-    effect.model.modelType = 0
-    effect.model.meshCount = 1
-    effect.model.vertexCount = 4
-    effect.model.mesh = RigidMesh()
-    effect.model.mesh.material = None
-    effect.model.mesh.vertices = []
+def makeEffect(self):
+    self.model = ccsModel()
+    #self.model.name = (f'{self.name}_{self.name.replace("EFF_", "MDL_")}')
+    self.model.name = self.name
+    self.model.type = "Effect_Model"
+    self.model.matFlags1 = self.matFlags1
+    self.model.matFlags2 = self.matFlags2
+    self.model.modelType = 0
+    self.model.meshCount = 1
+    self.model.vertexCount = 4
+    self.model.mesh = RigidMesh()
+    self.model.mesh.material = None
+    self.model.mesh.vertices = []
         
-    for i in range(effect.model.vertexCount):
-        vertex = EffectVertex(effect, i, effect.frameInfo)
-        effect.model.mesh.vertices.append(vertex)
+    for i in range(self.model.vertexCount):
+        vertex = EffectVertex(self, i)
+        self.model.mesh.vertices.append(vertex)
         
-def makeMaterial(effect):
-    effect.model.mesh.material = ccsMaterial()
-    effect.model.mesh.material.name = effect.name.replace("EFF_", "MAT_")
-    effect.model.mesh.material.texture = effect.texture
+def makeMaterial(self, texture):
+    self.mesh.material = ccsMaterial()
+    self.mesh.material.name = self.name.replace("EFF_", "MAT_")
+    self.mesh.material.texture = texture
 
 
 class EffectVertex:    
-    def __init__(self, effect, v, frameInfo=None):
+    def __init__(self, effect, v):
         self.position = [0, 0, 0]
         self.normals = (0, 0, 0)
         self.UV = [0, 0]

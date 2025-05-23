@@ -46,7 +46,8 @@ class Bone(BrStruct):
     
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
-        bone_obj.finalize(chunks)
+        if bone_obj.type != "Effect":
+            bone_obj.finalize(chunks)
 
         bone_obj.clump = clump
         

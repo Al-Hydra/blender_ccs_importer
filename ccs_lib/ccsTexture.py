@@ -80,7 +80,8 @@ class ccsTexture(BrStruct):
             return None
 
     def finalize(self, chunks):
-        self.colorTable = chunks[self.clutIndex]
+        #self.colorTable = chunks[self.clutIndex]
+        self.colorTable = chunks.get(self.clutIndex)
 
 
 btxFourCC = {
