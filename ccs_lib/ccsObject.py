@@ -87,12 +87,18 @@ class ccsAnmObject(BrStruct):
         self.layerIndex = br.read_uint32()
         self.extraIndex = br.read_uint32()
 
-        self.index = 0
+        #self.index = 0
 
     def finalize(self, chunks):
-        pass
+        #pass
         '''self.object = chunks[self.index]
         self.parent = chunks[self.parentIndex]
         self.model = chunks[self.modelIndex]
         self.shadow = chunks[self.layerIndex]
         self.extra = chunks[self.extraIndex]'''
+        
+        self.parent = chunks.get(self.parentIndex)
+        if self.parent:
+            print(f'ccsObject | self.parent.type {self.parent.type}')
+            if self.parent.type == "ExternalObject":
+                self.parentIndex = chunks.get(self.parent.referencedObjectIndex)
