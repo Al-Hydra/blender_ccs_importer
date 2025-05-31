@@ -34,7 +34,7 @@ class RigidMesh(BrStruct):
             for vertex in self.vertices:
                 vertex.color = [min(255, br.read_uint8() * 2) for i in range(4)]
         if ((modelFlags & 4) == 0):
-            if version > 0x125:
+            if version >= 0x125:
                 for v in self.vertices:
                     v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
 
