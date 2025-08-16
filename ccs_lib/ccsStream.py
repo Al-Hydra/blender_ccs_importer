@@ -39,7 +39,7 @@ class ccsStreamOutlineParam(BrStruct):
         self.textureIndex = br.read_uint32()
     
     def finalize(self, chunks):
-        self.object = chunks[self.objectIndex]
+        self.object = chunks.get(self.objectIndex)
         self.texture = chunks[self.textureIndex]
 
 
@@ -62,7 +62,8 @@ class ccsStreamCelShadeParam(BrStruct):
         self.textureIndex = br.read_uint32()
     
     def finalize(self, chunks):
-        self.object = chunks[self.objectIndex]
+        #self.object = chunks[self.objectIndex]
+        self.object = chunks.get(self.objectIndex)
         self.texture = chunks[self.textureIndex]
 
 
@@ -84,7 +85,7 @@ class ccsStreamToneShadeParam(BrStruct):
         self.textureIndex = br.read_uint32()
     
     def finalize(self, chunks):
-        self.object = chunks[self.objectIndex]
+        self.object = chunks.get(self.objectIndex)
         self.texture = chunks[self.textureIndex]
 
 

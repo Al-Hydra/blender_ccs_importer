@@ -23,7 +23,7 @@ class ccsObject(BrStruct):
         if version > 0x120:
             self.extraIndex = br.read_uint32()
 
-    def __br_write__(self, br: BinaryReader):
+    def __br_write__(self, br: BinaryReader, version: int):
         br.write_uint32(self.index)
         br.write_uint32(self.parentIndex)
         br.write_uint32(self.modelIndex)
@@ -57,6 +57,11 @@ class ccsExternalObject(BrStruct):
         self.referencedParentName = indexTable.Names[self.referencedParentIndex]
         self.referencedObjectIndex = br.read_uint32()
         self.referencedObjectName = indexTable.Names[self.referencedObjectIndex]
+
+    def __br_write__(self, br: BinaryReader, version: int):
+        br.write_uint32(self.index)
+        br.write_uint32(self.referencedParentIndex)
+        br.write_uint32(self.referencedObjectIndex)
     
     def finalize(self, chunks):
         self.parent = chunks.get(self.referencedParentIndex)
@@ -65,6 +70,7 @@ class ccsExternalObject(BrStruct):
         self.object = chunks.get(self.referencedObjectIndex)
         if self.object:
             self.objectIndex = self.object.index
+
 
 class ccsAnmObject(BrStruct):
     def __init__(self) -> None:
@@ -88,6 +94,13 @@ class ccsAnmObject(BrStruct):
         self.extraIndex = br.read_uint32()
 
         #self.index = 0
+
+    def __br_write__(self, br: BinaryReader, version: int):
+        br.write_uint32(self.index)
+        br.write_uint32(self.parentIndex)
+        br.write_uint32(self.modelIndex)
+        br.write_uint32(self.layerIndex)
+        br.write_uint32(self.extraIndex)
 
     def finalize(self, chunks):
         #pass

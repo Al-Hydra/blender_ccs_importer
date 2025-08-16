@@ -25,6 +25,7 @@ bl_info = {
 import bpy
 
 from .importer import *
+from .exporter import *
 
 
 class ccsSceneManager(bpy.types.PropertyGroup):
@@ -221,6 +222,9 @@ def register():
     bpy.utils.register_class(CCS_FH_import)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
+    bpy.utils.register_class(CCS_IMPORTER_OT_EXPORT)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+
 
 def unregister():
     bpy.utils.unregister_class(ccsMaterialProperties)
@@ -238,3 +242,6 @@ def unregister():
     bpy.utils.unregister_class(CCS_FH_import)
     del bpy.types.Scene.ccs_importer
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+
+    bpy.utils.register_class(CCS_IMPORTER_OT_EXPORT)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)

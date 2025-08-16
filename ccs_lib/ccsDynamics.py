@@ -22,6 +22,23 @@ class ccsDynamics(BrStruct):
         self.springBones = [br.read_struct(springBone) for i in range(self.springBonesCount)]
         self.collisions = [br.read_struct(collision) for i in range(self.collisionsCount)]
 
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.clumpIndex)
+
+        br.write_uint16(self.springBonesCount)
+        br.write_uint16(self.collisionsCount)
+
+        for s in range(self.springBonesCount):
+            s_bone = self.springBones[s]
+            s_bone: springBone
+            br.write_struct(s_bone)
+
+        for c in range(self.collisionsCount):
+            c_bone = self.collisions[c]
+            c_bone: collision
+            br.write_struct(c_bone)
+
+
     def finalize(self, chunks):
         self.clump = chunks[self.clumpIndex]
         if self.clump:
@@ -38,6 +55,10 @@ class springBone(BrStruct):
         self.boneIndex = br.read_uint32()
         self.params = br.read_float(3)
 
+    def __br_write__(self, br: BinaryReader):
+        br.write_uint32(self.boneIndex)
+        br.write_float(self.params)
+
 
 class collision(BrStruct):
 
@@ -47,9 +68,14 @@ class collision(BrStruct):
         self.rotation = (0,0,0)
         self.scale = (1,1,1)
     
-
     def __br_read__(self, br: BinaryReader):
         self.boneIndex = br.read_uint32()
         self.position = br.read_float(3)
         self.rotation = br.read_float(3)
         self.scale = br.read_float(3)
+
+    def __br_write__(self, br: BinaryReader):
+        br.write_uint32(self.boneIndex)
+        br.write_float(self.position)
+        br.write_float(self.rotation)
+        br.write_float(self.scale)

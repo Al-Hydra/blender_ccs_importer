@@ -14,6 +14,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.materialControllers = []
     self.pcmFrames = {}
     self.lights = defaultdict(dict)
+    self.animationLoops = False
 
     while current_frame > -1:
         # Read chunk type and size
@@ -85,8 +86,85 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
             self.lights['Ambient'][current_frame] = ambient_f.color
 
         else:
+            print(f"Skiped unknown chunk_type: {chunk_type}")
             # Skip unknown chunk
             br.seek(chunk_size * 4, 1)
+
+    if current_frame == -2:
+        self.animationLoops = True
+
+#def anmChunkWriter(self, br: BinaryReader, indexTable, version):
+def anmChunkWriter(self, br: BinaryReader, version):
+    current_frame = 0
+
+    for f in range(self.frameCount):
+        if f == 0:
+            # write frame 0
+            br.write_uint16(CCSTypes.Frame.value)
+            br.write_uint16(0xCCCC)
+            br.write_uint32(1)
+            br.write_int32(0) # first frame
+
+            # Object controllers
+            for objController in self.objectControllers:
+                objController: objectController
+                #br.write_uint16(0x0102)
+                br.write_uint16(CCSTypes.ObjectController.value)
+                br.write_uint16(0xCCCC)
+                # create temeperay buffer
+                ocBuffer = BinaryReader(encoding='cp932')
+                ocBuffer.write_struct(objController, current_frame)
+                # write chunk size
+                br.write_uint32(ocBuffer.size() // 4)
+                # write buffer to chunk
+                br.write_bytes(bytes(ocBuffer.buffer()))
+                print(f"objController: objectController: {objController}")
+
+            # material Controllers
+            for matController in self.materialControllers:
+                matController: materialController
+                #br.write_uint16(0x0202)
+                br.write_uint16(CCSTypes.MaterialController.value)
+                br.write_uint16(0xCCCC)
+                # create temeperay buffer
+                mcBuffer = BinaryReader(encoding='cp932')
+                mcBuffer.write_struct(matController, current_frame)
+                # write chunk size
+                br.write_uint32(mcBuffer.size() // 4)
+                # write buffer to chunk
+                br.write_bytes(bytes(mcBuffer.buffer()))
+                print(f"materialController: materialController: {matController}")
+
+        elif f < self.frameCount:
+            # write final frame as (-1) or (-2)for looping?
+            br.write_uint16(CCSTypes.Frame.value)
+            br.write_uint16(0xCCCC)
+            br.write_uint32(1)
+            br.write_int32(f) # frame
+            if f == self.frameCount -1:
+                # write final frame as -1 or -2
+                br.write_uint16(CCSTypes.Frame.value)
+                br.write_uint16(0xCCCC)
+                br.write_uint32(1)
+                if self.animationLoops == False:
+                    br.write_int32(-1) # last frame
+                else:
+                    br.write_int32(-2) # last frame
+                break
+        else:
+            # write final frame as -1 or -2
+            br.write_uint16(CCSTypes.Frame.value)
+            br.write_uint16(0xCCCC)
+            br.write_uint32(1)
+            if self.animationLoops == False:
+                br.write_int32(-1) # last frame
+            else:
+                br.write_int32(-2) # last frame
+            break
+    
+    return
+
+
 
 class objectController(BrStruct):
     def __init__(self):
@@ -107,8 +185,18 @@ class objectController(BrStruct):
         self.scales = readVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
         self.opacity = readFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
+    def __br_write__(self, br: BinaryReader, currentFrame):
+            br.write_uint32(self.objectIndex)
+            br.write_uint32(self.ctrlFlags)
+            writeVector(br, self.positions, self.ctrlFlags, currentFrame)
+            writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
+            writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
+            writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
+            writeFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]
+
 
 class cameraController(BrStruct):
     def __init__(self):
@@ -146,8 +234,17 @@ class materialController(BrStruct):
         self.scaleX = readFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
         self.scaleY = readFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
+    def __br_write__(self, br: BinaryReader, currentFrame):
+            br.write_uint32(self.index)
+            br.write_uint32(self.ctrlFlags)
+            writeFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
+            writeFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+            writeFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+            writeFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+
     def finalize(self, chunks):
         self.material = chunks[self.index]
+
 
 class materialFrame(BrStruct):
     def __init__(self):
@@ -359,6 +456,7 @@ class ambientFrame(BrStruct):
         self.color = br.read_uint8(4)
         self.frame = currentFrame
 
+
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
@@ -366,6 +464,18 @@ def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     elif ctrlFlags & 7 == 1:
         vectorFrames[currentFrame] = br.read_float(3)
     return vectorFrames
+
+def writeVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 2:
+        br.write_uint32(len(vectorFrames))
+        for f in vectorFrames:
+            br.write_uint32(f)
+            br.write_float(vectorFrames[f])
+    elif ctrlFlags & 7 == 1:
+        for f in vectorFrames:
+            br.write_float(vectorFrames[f])
+    return
+
 
 def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
@@ -375,11 +485,32 @@ def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
         rotationFrames[currentFrame] = br.read_float(3)
     return rotationFrames
 
+def writeRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 2:
+        br.write_uint32(len(rotationFrames))
+        for f in rotationFrames:
+            br.write_uint32(f)
+            br.write_float(rotationFrames[f])
+    elif ctrlFlags & 7 == 1:
+        for f in rotationFrames:
+            br.write_float(rotationFrames[f])
+    return
+
+
 def readRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 4:
         frameCount = br.read_uint32()
         rotationFrames = {br.read_int32(): br.read_float(4) for _ in range(frameCount)}
     return rotationFrames
+
+def writeRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 4:
+        br.write_uint32(len(rotationFrames))
+        for f in rotationFrames:
+            br.write_uint32(f)
+            br.write_float(rotationFrames[f])
+    return
+
 
 def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
@@ -388,6 +519,18 @@ def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     elif ctrlFlags & 7 == 1:
         floatFrames[currentFrame] = br.read_float()
     return floatFrames
+
+def writeFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 2:
+        br.write_uint32(len(floatFrames))
+        for f in floatFrames:
+            br.write_uint32(f)
+            br.write_float(floatFrames[f])
+    elif ctrlFlags & 7 == 1:
+        for f in floatFrames:
+            br.write_float(floatFrames[f])
+    return
+
 
 def readColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
