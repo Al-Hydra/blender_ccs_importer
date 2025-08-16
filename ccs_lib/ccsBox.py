@@ -17,6 +17,18 @@ class ccsBox(BrStruct):
         self.min = br.read_float(3)
         self.max = br.read_float(3)
         
+    def __br_write__(self, br: BinaryReader, version=0x120):
+        br.write_uint32(self.index)
+        br.write_uint32(self.modelIndex)
+        #br.write_float(self.min)
+        br.write_float(self.min[0])
+        br.write_float(self.min[1])
+        br.write_float(self.min[2])
+        #br.write_float(self.max)
+        br.write_float(self.max[0])
+        br.write_float(self.max[1])
+        br.write_float(self.max[2])
+        
     
     def finalize(self, chunks):
         self.model = chunks[self.modelIndex]

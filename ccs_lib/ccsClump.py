@@ -22,7 +22,28 @@ class ccsClump(BrStruct):
         else:
             #Early versions of CCS Clumps don't have loc, rot, scale data for bones
             self.bones = {i: Bone() for i in self.boneIndices}
-    
+
+
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.index)
+        br.write_uint32(self.boneCount)
+
+        
+        for i in range(self.boneCount):
+            br.write_uint32(self.boneIndices[i])
+
+        if version > 0x110:
+            print(f'TODO: Clump FIX THIS')
+            print(f'self.bones {self.bones.items()}')
+            for i, bone in self.bones.items():
+                bone: Bone
+                print(f'self.bones.Bbone: {bone}')
+                br.write_struct(bone)
+        else:
+            print(f'TODO: Clump version lower then 0x110')
+
+
+
     def finalize(self, chunks):
         for bone, index in zip(self.bones.values(), self.boneIndices):
             bone.finalize(index, self.bones, chunks, self)
@@ -43,7 +64,14 @@ class Bone(BrStruct):
         self.pos = br.read_float(3)
         self.rot = br.read_float(3)
         self.scale = br.read_float(3)
+
+
+    def __br_write__(self, br: BinaryReader):
+        br.write_float(self.pos)
+        br.write_float(self.rot)
+        br.write_float(self.scale)
     
+
     def finalize(self, index, bones, chunks, clump):
         bone_obj = chunks[index]
         if bone_obj.type != "Effect":

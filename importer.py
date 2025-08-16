@@ -338,7 +338,6 @@ class importCCS:
             ccs_manager = bpy.data.objects.get("CCS Scene Manager")
         
 
-
         #clumps
         for cmpChunk in self.ccsf.sortedChunks["Clump"]:
             if bpy.data.armatures.get(cmpChunk.name):
@@ -981,6 +980,9 @@ class importCCS:
             bones = [bone for bone in clump.bones.values()]
         else:
             bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
+            #print(f'bones = {bones}')
+            #for i , bone in enumerate(bones):
+            #    print(f'bone.name {i} {bone.name}')
 
         for i, ccsVertex in enumerate(mesh.vertices):
             #calculate vertex final position

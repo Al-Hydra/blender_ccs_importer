@@ -29,16 +29,16 @@ class ccsMaterial(BrStruct):
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
             self.scaleY = br.read_int16() / 4096
-            unk0 = br.read_int32()
-            unk1 = br.read_int32()
-            AmbientColor = br.read_uint8(4)
-            self.textureNIndex = br.read_uint32()
-            self.NormalMapParam = br.read_float()
-            unk2 = br.read_int32()
-            self.textureSIndex = br.read_uint32()
+            self.unk0 = br.read_int32()
+            self.unk1 = br.read_int32()
+            self.ambientColor = br.read_uint8(4)
+            self.textureNormIndex = br.read_uint32()
+            self.normalMapParam = br.read_float()
+            self.unk2 = br.read_int32()
+            self.textureSpecIndex = br.read_uint32()
             self.SpecularParam1 = br.read_float()
             self.SpecularParam2 = br.read_float()
-            self.textureMIndex = br.read_uint32()
+            self.textureMultiIndex = br.read_uint32()
             self.MultiTexParams = br.read_uint8(4)
             self.MultiTexUV = br.read_float(4)
             self.MultiTexSpeed = br.read_float(2)
@@ -48,7 +48,7 @@ class ccsMaterial(BrStruct):
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
             self.scaleY = br.read_int16() / 4096
-            values = br.read_int32(9)
+            self.values = br.read_int32(9)
         elif version < 0x130 and version > 0x120:
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
@@ -58,13 +58,55 @@ class ccsMaterial(BrStruct):
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
 
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.index)
+        br.write_uint32(self.textureIndex)
+        br.write_float(self.alpha)
+        if version > 0x130:
+            print(f'TODO: Export matertials for versions over 0x130')
+            br.write_uint16(int(self.offsetX * 4096))
+            br.write_uint16(int(self.offsetY * 4096))
+            br.write_uint16(int(self.scaleX * 4096))
+            br.write_uint16(int(self.scaleY * 4096))
+            br.write_uint32(self.unk0)
+            br.write_uint32(self.unk1)
+            br.write_uint8(self.ambientColor[0])
+            br.write_uint8(self.ambientColor[1])
+            br.write_uint8(self.ambientColor[2])
+            br.write_uint8(self.ambientColor[3])
+            br.write_uint32(self.textureNormIndex)
+            br.write_float(self.normalMapParam)
+            br.write_uint32(self.unk2)
+            br.write_uint32(self.textureSpecIndex)
+            br.write_float(self.SpecularParam1)
+            br.write_float(self.SpecularParam2)
+            br.write_uint32(self.textureMultiIndex)
+            br.write_uint8(self.MultiTexParams)
+            br.write_float(self.MultiTexUV)
+            br.write_float(self.MultiTexSpeed)
+            br.write_uint8(self.EmissionColor)
+        elif version == 0x130:
+            br.write_uint16(int(self.offsetX * 4096))
+            br.write_uint16(int(self.offsetY * 4096))
+            br.write_uint16(int(self.scaleX * 4096))
+            br.write_uint16(int(self.scaleY * 4096))
+            br.write_bytes(bytes(self.values))
+        elif version < 0x130 and version > 0x120:
+            br.write_uint16(int(self.offsetX * 4096))
+            br.write_uint16(int(self.offsetY * 4096))
+            br.write_uint16(int(self.scaleX * 4096))
+            br.write_uint16(int(self.scaleY * 4096))
+        else:
+            br.write_uint16(int(self.offsetX * 4096))
+            br.write_uint16(int(self.offsetY * 4096))
+
 
     def finalize(self, chunks):
         self.texture = chunks.get(self.textureIndex)
         if self.version > 0x130:
-            if self.textureNIndex:
-                self.textureN = chunks.get(self.textureNIndex)
-            if self.textureSIndex:
-                self.textureS = chunks.get(self.textureNIndex)
-            if self.textureMIndex:
-                self.textureM = chunks.get(self.textureMIndex)
+            if self.textureNormIndex:
+                self.textureN = chunks.get(self.textureNormIndex)
+            if self.textureSpecIndex:
+                self.textureS = chunks.get(self.textureSpecIndex)
+            if self.textureMultiIndex:
+                self.textureM = chunks.get(self.textureMultiIndex)

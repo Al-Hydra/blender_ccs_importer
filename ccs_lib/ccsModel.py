@@ -10,6 +10,8 @@ class ModelTypes(IntFlag):
 
 class RigidMesh(BrStruct):
     def __init__(self):
+        self.parentIndex = 0
+        self.materialIndex = 0
         self.material = None
         self.vertexCount = 0
         self.unk = 0
@@ -49,6 +51,72 @@ class RigidMesh(BrStruct):
                 vertex.Binormal = tuple((map(lambda x: x/64, br.read_int8(3))))
                 vertex.Binormal_triangleFlag = br.read_int8()
 
+
+    def __br_write__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110, tanBinFlag = 0):
+        br.write_uint32(self.parentIndex)
+        br.write_uint32(self.materialIndex)
+        br.write_uint32(self.vertexCount)
+
+        finalScale = ((vertexScale / 256)  / 16) * 0.01
+
+        posCount = 0
+        normCount = 0
+        colCount = 0
+        uvCount = 0
+        vpBuffer = BinaryReader(encoding='cp932')
+        vnBuffer = BinaryReader(encoding='cp932')
+        vcBuffer = BinaryReader(encoding='cp932')
+        uvBuffer = BinaryReader(encoding='cp932')
+        vtBuffer = BinaryReader(encoding='cp932')
+        vbnBuffer = BinaryReader(encoding='cp932')
+        
+        for v in range(self.vertexCount):
+            posCount += 1
+            v_pos = self.vertices[v].position
+            vpBuffer.write_int16(round(v_pos[0] / finalScale))
+            vpBuffer.write_int16(round(v_pos[1] / finalScale))
+            vpBuffer.write_int16(round(v_pos[2] / finalScale))
+
+            normCount += 1
+            v_norm = self.vertices[v].normal
+            vnBuffer.write_int8(int(v_norm[0] * 64))
+            vnBuffer.write_int8(int(v_norm[1] * 64))
+            vnBuffer.write_int8(int(v_norm[2] * 64))
+            vnBuffer.write_int8(self.vertices[v].triangleFlag)
+
+            if ((modelFlags & 2) == 0):
+                colCount += 1
+                v_col = self.vertices[v].color
+                vcBuffer.write_uint8(round(v_col[0] / 2))
+                vcBuffer.write_uint8(round(v_col[1] / 2))
+                vcBuffer.write_uint8(round(v_col[2] / 2))
+                vcBuffer.write_uint8(round(v_col[3] / 2))
+
+            if ((modelFlags & 4) == 0):
+                uvCount += 1
+                if version >= 0x125:
+                    print(f'UV VERSION: >= 0x125 UV: {self.vertices[v].UV[0]}, {self.vertices[v].UV[1]}')
+                    uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
+                    uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
+                else:
+                    uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
+                    uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
+
+            if tanBinFlag:
+                print(f'TODO: Export meshes mesh tan & Bin')
+
+        print(f'RigidMesh version {version} posCount {posCount} normCount {normCount} colCount {colCount} uvCount {uvCount}')
+
+        br.write_bytes(bytes(vpBuffer.buffer()))
+        # br.align_pos(4)
+        write_align(br, 4)
+        br.write_bytes(bytes(vnBuffer.buffer()))
+        br.write_bytes(bytes(vcBuffer.buffer()))
+        br.write_bytes(bytes(uvBuffer.buffer()))
+        if tanBinFlag:
+            br.write_bytes(bytes(vtBuffer.buffer()))
+            br.write_bytes(bytes(vbnBuffer.buffer()))
+
     
     def finalize(self, chunks):
         self.material = chunks.get(self.materialIndex)
@@ -70,6 +138,28 @@ class ShadowMesh(BrStruct):
         br.align_pos(4)
         self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
 
+
+    def __br_write__(self, br: BinaryReader, vertexScale=64):
+        #br.write_uint32(0)
+        #br.write_uint32(0)
+        br.write_uint32(self.vertexCount)
+        br.write_uint32(self.triangleVerticesCount)
+
+        finalScale = ((vertexScale / 256)  / 16) * 0.01
+
+        for v in range(self.vertexCount):
+            br.write_int16(round(self.vertices[v].position[0] / finalScale))
+            br.write_int16(round(self.vertices[v].position[1] / finalScale))
+            br.write_int16(round(self.vertices[v].position[2] / finalScale))
+
+        # br.align_pos(4)
+        write_align(br, 4)
+        for v in range((self.triangleVerticesCount // 3)):
+            br.write_int32(self.triangles[v][0])
+            br.write_int32(self.triangles[v][1])
+            br.write_int32(self.triangles[v][2])
+
+
     def finalize(self, chunks):
         pass
 
@@ -77,13 +167,13 @@ class ShadowMesh(BrStruct):
 
 class DeformableMesh(BrStruct):
     def __init__(self):
+        self.materialIndex = 0
         self.material = None
         self.vertexCount = 0
         self.deformableVerticesCount = 0
         self.vertices = []
     def __br_read__(self, br: BinaryReader, vertexScale=256, version = 0x100, tanBinFlag = 0):
-        self.materialID = br.read_uint32()
-        #print(f'MaterialID = {self.MaterialID}')
+        self.materialIndex = br.read_uint32()
         self.vertexCount = br.read_uint32() #This is the number of vertices that are actually used
         #print(f'VertexCount = {self.VertexCount}')
         self.deformableVerticesCount = br.read_uint32() 
@@ -126,7 +216,6 @@ class DeformableMesh(BrStruct):
                 vtBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
                 vbnBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
                 
-
 
         else: #multiple weights vertices
             if version < 0x125:
@@ -204,20 +293,179 @@ class DeformableMesh(BrStruct):
                     vertex.UV = (uvBuffer.read_int32() / 65536, uvBuffer.read_int32() / 65536)
 
                     self.vertices.append(vertex)
-                
+
+
+    def __br_write__(self, br: BinaryReader, vertexScale=256, version = 0x120, tanBinFlag = 0):
+        br.write_uint32(self.materialIndex)
+        br.write_uint32(self.vertexCount)
+        br.write_uint32(self.deformableVerticesCount)
+        #print(f'Write DeformableMesh vertexCount: {self.vertexCount}, deformableVerticesCount: {self.deformableVerticesCount}')
+
+        finalScale = ((vertexScale / 256)  / 16) * 0.01
+        #print(f'exportScale: {finalScale}')
+
+        #Single weight vertices
+        if not self.deformableVerticesCount:
+            br.write_uint32(self.vertices[0].boneIDs[0])
+
+            for v in range(self.vertexCount):
+                v_pos = self.vertices[v].positions[0]
+                br.write_int16(int(v_pos[0] / finalScale))
+                br.write_int16(int(v_pos[1] / finalScale))
+                br.write_int16(int(v_pos[2] / finalScale))
+
+            # br.align_pos(4)
+            write_align(br, 4)
+
+            for v in range(self.vertexCount):
+                v_norm = self.vertices[v].normals[0]
+                br.write_int8(int(v_norm[0] * 64))
+                br.write_int8(int(v_norm[1] * 64))
+                br.write_int8(int(v_norm[2] * 64))
+                br.write_int8(self.vertices[v].triangleFlag)
+
+            if version > 0x125:
+                for v in self.vertices:
+                    br.write_int32(int(v.UV[0] * 65536))
+                    br.write_int32(int(v.UV[1] * 65536))
+
+            else:
+                for v in self.vertices:
+                    br.write_int16(int(v.UV[0] * 256))
+                    br.write_int16(int(v.UV[1] * 256))
+            
+            if tanBinFlag:
+                print(f'TODO: Export meshes mesh tan & Bin')
+
+
+        else: #multiple weights vertices
+            posCount = 0
+            normCount = 0
+            uvCount = 0
+            vpBuffer = BinaryReader(encoding='cp932')
+            vnBuffer = BinaryReader(encoding='cp932')
+            uvBuffer = BinaryReader(encoding='cp932')
+            vtBuffer = BinaryReader(encoding='cp932')
+            vbnBuffer = BinaryReader(encoding='cp932')
+
+            if version < 0x125:
+                #print(f'self.vertices: {len(self.vertices)}')
+                for v in range(self.vertexCount):
+                    posCount += 1
+                    v_pos = self.vertices[v].positions[0]
+                    vpBuffer.write_int16(int(v_pos[0] / finalScale))
+                    vpBuffer.write_int16(int(v_pos[1] / finalScale))
+                    vpBuffer.write_int16(int(v_pos[2] / finalScale))
+                    boneID = self.vertices[v].boneIDs[0]
+                    weight = self.vertices[v].weights[0]
+                    #vertParams = (boneID << 10) | int(weight * 256) | (1 << 9)
+                    vertParams = (boneID << 10) | int(weight * 256)
+                    #print(f'vertParams: {vertParams}')
+                    if self.vertices[v].multiWeight:
+                        vertParams &= ~(1 << 9)
+                    else:
+                        vertParams |= (1 << 9)
+
+                    #print(f'vertParams: {vertParams}')
+                    vpBuffer.write_uint16(vertParams)
+
+                    if self.vertices[v].multiWeight:
+                        v_pos = self.vertices[v].positions[1]
+                        vpBuffer.write_int16(int(v_pos[0] / finalScale))
+                        vpBuffer.write_int16(int(v_pos[1] / finalScale))
+                        vpBuffer.write_int16(int(v_pos[2] / finalScale))
+                        boneID = self.vertices[v].boneIDs[1]
+                        weight = self.vertices[v].weights[1]
+                        secondParams = (boneID << 10) | int(weight * 256)
+                        #print(f'vertParams: {secondParams}')
+                        secondParams |= (1 << 9)
+                        vpBuffer.write_uint16(secondParams)
+                    #print(f"v.position: {posCount} weights {len(self.vertices[v].positions)} {len(bytes(vpBuffer.buffer()))}")
+                    
+                    v_norm = self.vertices[v].normals[0]
+                    normCount += 1
+                    vnBuffer.write_int8(int(v_norm[0] * 64))
+                    vnBuffer.write_int8(int(v_norm[1] * 64))
+                    vnBuffer.write_int8(int(v_norm[2] * 64))
+                    vnBuffer.write_int8(self.vertices[v].triangleFlag)
+                    
+                    if self.vertices[v].multiWeight:
+                        normCount += 1
+                        #v_norm = self.vertices[v].normals[1]
+                        v_norm = self.vertices[v].normals[0]
+                        vnBuffer.write_int8(int(v_norm[0] * 64))
+                        vnBuffer.write_int8(int(v_norm[1] * 64))
+                        vnBuffer.write_int8(int(v_norm[2] * 64))
+                        vnBuffer.write_int8(self.vertices[v].triangleFlag)
+                    
+                    uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
+                    uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
+                    uvCount += 1
+
+            else:
+                for v in range(self.vertexCount):
+                    posCount += 1
+                    for i in range(len(self.vertices[v].positions)):
+                        v_pos = self.vertices[v].positions[i]
+                        #print(f'self.vertex: {v} posCount {len(self.vertices[v].positions)}')
+                        vpBuffer.write_int16(int(v_pos[0] / finalScale))
+                        vpBuffer.write_int16(int(v_pos[1] / finalScale))
+                        vpBuffer.write_int16(int(v_pos[2] / finalScale))
+                        vpBuffer.write_int16(int(self.vertices[v].weights[i] * 256))
+
+                        if i != len(self.vertices[v].positions) - 1:
+                            vpBuffer.write_int16(0)
+                        else:
+                            vpBuffer.write_int16(1)
+
+                        vpBuffer.write_int16(self.vertices[v].boneIDs[i])
+
+                        normCount += 1
+                        v_norm = self.vertices[v].normals[i]
+                        vnBuffer.write_int8(int(v_norm[0] * 64))
+                        vnBuffer.write_int8(int(v_norm[1] * 64))
+                        vnBuffer.write_int8(int(v_norm[2] * 64))
+                        vnBuffer.write_int8(self.vertices[v].triangleFlag)
+
+                        if tanBinFlag:
+                            v_tan = self.vertices[v].tangents[i]
+                            vnBuffer.write_int8(int(v_tan[0] * 64))
+                            vnBuffer.write_int8(int(v_tan[1] * 64))
+                            vnBuffer.write_int8(int(v_tan[2] * 64))
+                            vnBuffer.write_int8(0)
+
+                            v_bin = self.vertices[v].tangents[i]
+                            vnBuffer.write_int8(int(v_bin[0] * 64))
+                            vnBuffer.write_int8(int(v_bin[1] * 64))
+                            vnBuffer.write_int8(int(v_bin[2] * 64))
+                            vnBuffer.write_int8(0)
+
+                    
+                    uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
+                    uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
+                    uvCount += 1
+
+            br.write_bytes(bytes(vpBuffer.buffer()))
+            br.write_bytes(bytes(vnBuffer.buffer()))
+            br.write_bytes(bytes(uvBuffer.buffer()))
+            if tanBinFlag:
+                br.write_bytes(bytes(vtBuffer.buffer()))
+                br.write_bytes(bytes(vbnBuffer.buffer()))
+
 
     def finalize(self, chunks):
-        self.material = chunks.get(self.materialID)
+        self.material = chunks.get(self.materialIndex)
 
 
 class unkMesh(BrStruct):
     def __init__(self):
+        self.materialIndex = 0
         self.material = None
         self.vertexCount = 0
         self.unk = 0
         self.vertices = []
     def __br_read__(self, br: BinaryReader, vertexScale=64):
-        self.materialID = br.read_uint32()
+        self.materialIndex = br.read_uint32()
         self.sectionCount = br.read_uint32()
         self.vertices = list()
         self.normals = list()
@@ -301,7 +549,7 @@ class unkMesh(BrStruct):
 
     
     def finalize(self, chunks):
-        self.material = chunks.get(self.materialID)
+        self.material = chunks.get(self.materialIndex)
         self.clump = chunks.get(self.clumpIndex)
         self.lookupList = self.clump.boneIndices
 
@@ -320,7 +568,6 @@ class ccsModel(BrStruct):
         self.meshCount = 0
         self.sourceFactor = 0
         self.boundingBox = None
-
 
     def __br_read__(self, br: BinaryReader, indexTable, version=0x110):
         self.index = br.read_uint32()
@@ -344,10 +591,13 @@ class ccsModel(BrStruct):
             self.outlineWidth = br.read_float()
         
         #print(f'LookupListCount = {self.LookupListCount}')
+        # Replaced 'and' with 'or' to import some models needs to be looked into
+        # Example from UN3 d18_101e.ccs
         if (self.modelType & 1 == 0) and (self.modelType & 4) and version > 0x111:
+        #if (self.modelType & 1 == 0) or (self.modelType & 4) and version > 0x111:
             self.lookupList = [br.read_uint8() for i in range(self.lookupListCount)]
             br.align_pos(4)
-            #print(f'lookupTable = {self.LookupList}')
+            #print(f'lookupList = {self.lookupList}')
         else:
             self.lookupList = None
 
@@ -370,7 +620,58 @@ class ccsModel(BrStruct):
                     rigidmesh = br.read_struct(RigidMesh, None, self.vertexScale, self.modelFlags, version, self.tangentBinormalsFlag)
                     self.meshes.append(rigidmesh)
     
+
+    def __br_write__(self, br: BinaryReader, version=0x120):
+        #print(f'Write chunk index: {self.index} name: {self.name}')
+        br.write_uint32(self.index)
+        br.write_float(self.vertexScale)
+        br.write_uint8(self.modelType)
+        br.write_uint8(self.modelFlags)
+        br.write_uint16(self.meshCount)
+        br.write_uint8(self.matFlags1)
+        br.write_uint8(self.matFlags2)
+        br.write_uint16(self.unkFlags)
+        br.write_uint8(self.lookupListCount)
+        br.write_uint8(self.extraFlags)
+        br.write_uint16(self.tangentBinormalsFlag)
+
+        if version > 0x110:
+            br.write_uint8(self.outlineColor)
+            br.write_float(self.outlineWidth)
+
+        if ((self.modelType & 1) == 0) and (self.modelType & 4) and version > 0x111:
+            for i in range(self.lookupListCount):
+                br.write_uint8(self.lookupList[i])
+                
+            # br.align_pos(4)
+            write_align(br, 4)
+
+        if self.meshCount > 0:
+
+            if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.TrianglesList:
+                print(f'Write chunk index: {self.index} name: {self.name}')
+                for mesh in self.meshes:
+                    mesh: DeformableMesh
+                    br.write_struct(mesh, self.vertexScale, version, self.tangentBinormalsFlag)
+            
+            elif self.modelType == ModelTypes.ShadowMesh:
+                for mesh in self.meshes:
+                    mesh: ShadowMesh
+                    br.write_struct(mesh)
+            
+            elif self.modelType & ModelTypes.TrianglesList:
+                print(f'TODO: Export meshes model type TrianglesList')
+
+            else:
+                self.meshes: RigidMesh
+                br.write_struct(self.meshes, self.vertexScale, self.modelFlags, version, self.tangentBinormalsFlag)
+
+
     def finalize(self, chunks):
+        if self.lookupList:
+            self.lookuplistnames = [chunks.get(i).name for i in self.lookupList]
+            #print(f'lookuplistnames = {self.lookuplistnames}')
+
         for mesh in self.meshes:
             mesh.finalize(chunks)
 
@@ -390,12 +691,22 @@ class Vertex(BrStruct):
         self.UV = (uv[0] / 256, (uv[1] / 256))
         self.triangleFlag = flag
 
+
 class DeformableVertex:    
     def __init__(self):
         self.positions = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
         self.normals = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+        self.tangents = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
         self.weights = [0, 0, 0, 0]
         self.UV = [0, 0]
         self.boneIDs = [0, 0, 0, 0]
         self.triangleFlag = 0
         self.multiWeight = False
+
+
+def write_align(br: BinaryReader, align):
+    pos = br.pos()
+    pad = (align - (pos % align)) % align
+    if pad:
+        print(f'write_align padding: {pad}')
+        br.write_bytes(bytes(pad))
