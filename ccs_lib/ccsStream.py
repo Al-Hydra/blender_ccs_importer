@@ -1,6 +1,6 @@
 from .utils.PyBinaryReader.binary_reader import *
 #from .ccsTypes import CCSTypes
-from .Anms import anmChunkReader
+from .Anms import anmChunkReader, anmChunkWriter
 
 
 class ccsStream(BrStruct):
