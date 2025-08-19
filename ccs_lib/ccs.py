@@ -46,7 +46,7 @@ class ccsFile(BrStruct):
         #fill the chunks dict with values from the index table
         #self.chunks = {self.indexTable.Names[i][0]: ccsChunk(i, self.indexTable.Names[i][0], "", self.indexTable.Names[i][1]) for i in range(self.indexTable.NamesCount)}
         self.sortedChunks = {name: [] for name in CCSTypes.__members__.keys()}
-        self.sortedChunks[0, ""] = []
+        #self.sortedChunks[0, ""] = []
         #read setup section
         chunkType = CCSTypes(br.read_uint16())
         br.seek(2, 1) #skip 0xCCCC bytes
@@ -75,7 +75,7 @@ class ccsFile(BrStruct):
                 chunkData = br.read_struct(chunkClass, None, self.indexTable, self.version)
             else:
                 print(f"Unknown chunk type {chunkType} at {hex(br.pos())}, index {index}")
-                chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version)
+                chunkData = br.read_struct(ccsChunk, None, self.indexTable, chunkSize, self.version, chunkType.name)
 
             self.sortedChunks[chunkData.type].append(chunkData)
             #sort obj2 chunks separetly as their index overlaps with companion chunks
@@ -180,7 +180,7 @@ class ccsHeader(BrStruct):
         br.write_uint16(self.Type)
         br.write_uint16(0xCCCC)
         br.write_uint32(int(self.Size / 4))
-        br.write_str(self.Magic)
+        br.write_str_fixed(self.Magic, 4)
         br.write_str_fixed(self.FileName, 32)
         br.write_uint32(self.Version)
         br.write_uint32(self.TotalChunkCount)
@@ -209,11 +209,13 @@ class ccsIndex(BrStruct):
 
         br.write_uint32(self.PathsCount)
         br.write_uint32(self.NamesCount)
+        
+        for path in self.Paths:
+            br.write_str_fixed(path, 32)
 
-        [br.write_str_fixed(self.Paths[i], 32) for i in range(self.PathsCount)]
         for name, path in self.Names:
             br.write_str_fixed(name, 30)
-            br.write_uint16(self.Paths.index(path)) 
+            br.write_uint16(self.Paths.index(path))
 
 
 class ccsChunk(BrStruct):
@@ -226,11 +228,12 @@ class ccsChunk(BrStruct):
         self.clump = None
         self.parent = self
     
-    def __br_read__(self, br: BinaryReader, indexTable, size, version):
+    def __br_read__(self, br: BinaryReader, indexTable, size, version, chunkType):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
         self.data = br.read_bytes(size - 4)
+        self.type = chunkType
 
     def __br_write__(self, br: BinaryReader, indexTable, size, version):
         br.write_uint32(self.index)

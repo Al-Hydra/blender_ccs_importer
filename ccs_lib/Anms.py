@@ -191,7 +191,7 @@ class objectController(BrStruct):
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.scales = readVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
-        self.opacity = readfloat32(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+        self.opacity = readFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.objectIndex)
@@ -200,7 +200,7 @@ class objectController(BrStruct):
             writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
             writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
             writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
-            writefloat32(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+            writeFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.objectIndex)
@@ -229,7 +229,7 @@ class cameraController(BrStruct):
         self.positions = readVector(br, self.positions, self.ctrlFlags, currentFrame)
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-        self.FOV = readfloat32(br, self.FOV, self.ctrlFlags, currentFrame)
+        self.FOV = readFloat(br, self.FOV, self.ctrlFlags, currentFrame)
 
     def finalize(self, chunks):
         self.camera = chunks[self.cameraIndex]
@@ -246,18 +246,18 @@ class materialController(BrStruct):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.ctrlFlags = br.read_uint32()
-        self.offsetX = readfloat32(br, self.offsetX, self.ctrlFlags, currentFrame)
-        self.offsetY = readfloat32(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
-        self.scaleX = readfloat32(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
-        self.scaleY = readfloat32(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+        self.offsetX = readFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
+        self.offsetY = readFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+        self.scaleX = readFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+        self.scaleY = readFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.index)
             br.write_uint32(self.ctrlFlags)
-            writefloat32(br, self.offsetX, self.ctrlFlags, currentFrame)
-            writefloat32(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
-            writefloat32(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
-            writefloat32(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+            writeFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
+            writeFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+            writeFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+            writeFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.index)
@@ -324,7 +324,7 @@ class morphTarget(BrStruct):
         morphValues = {}
         self.index = br.read_uint32()
         ctrlFlags = br.read_uint32()
-        self.values = readfloat32(br, morphValues, ctrlFlags, currentFrame)
+        self.values = readFloat(br, morphValues, ctrlFlags, currentFrame)
 
 class morphFrame(BrStruct):
     def __init__(self):
@@ -543,7 +543,7 @@ def writeRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
     return
 
 
-def readfloat32(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
+def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
         floatFrames = np.frombuffer(br.read_bytes(frameCount * 8), dtype=[('frame', 'i4'), ('value', 'f4')])
@@ -552,7 +552,7 @@ def readfloat32(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
         floatFrames[currentFrame] = br.read_float32()
     return floatFrames
 
-def writefloat32(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
+def writeFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(floatFrames))
         for f in floatFrames:

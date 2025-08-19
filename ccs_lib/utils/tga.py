@@ -51,7 +51,7 @@ class TGA(BrStruct):
         br.write_uint16(self.Height)
         br.write_uint8(self.BitsPerPixel)
         br.write_uint8(self.ImageDescriptor)
-        br.write_str(self.ImageID)
+        br.write_str(self.ImageID, False)
 
         if self.DataTypeCode == 1 or 9:
             br.write_bytes(self.PaletteData)
@@ -68,22 +68,6 @@ class DataTypes(Enum):
     RUN_LENGTH_ENCODED_COLOR_MAPPED = 9
     RUN_LENGTH_ENCODED_TRUE_COLOR = 10
     RUN_LENGTH_ENCODED_BLACK_AND_WHITE = 11
-
-
-def BGRA_to_RGBA(data: bytes) -> bytes:
-    new_data = bytearray(data)
-    for i in range(0, len(new_data), 4):
-        b = new_data[i]
-        g = new_data[i + 1]
-        r = new_data[i + 2]
-        a = new_data[i + 3]
-        new_data[i] = r
-        new_data[i + 1] = g
-        new_data[i + 2] = b
-        new_data[i + 3] = a
-
-    
-    return bytes(new_data)
 
 
 def rgbaToTGA(width,height,textureData):
@@ -116,7 +100,7 @@ def indexed8ToTGA(width, height, indices, colorPalette):
     pixels = colorPalette_array[indices_array]
 
     # Flatten pixels array and convert to bytes
-    pixels_bytes = pixels.flatten().tobytes()
+    pixels_bytes = pixels.tobytes()
 
     tga.ImageID = ""
     tga.ColorMapType = 0
@@ -151,8 +135,7 @@ def indexed4ToTGA(width, height, indices, colorPalette):
     #Create pixels array using NumPy array operations
     pixels = np.concatenate((colorPalette[lower_nibble], colorPalette[upper_nibble]), axis=1)
 
-    # Flatten pixels array and convert to bytes
-    pixels_bytes = pixels.flatten().tobytes()
+    pixels_bytes = pixels.tobytes()
 
 
     tga.ImageID = ""
@@ -173,4 +156,3 @@ def indexed4ToTGA(width, height, indices, colorPalette):
         br.write_struct(tga)
 
         return br.buffer()
-
