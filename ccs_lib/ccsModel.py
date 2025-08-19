@@ -481,7 +481,7 @@ class unkMesh(BrStruct):
             sectionType = br.read_uint8()
             br.seek(2, 1)
             count = br.read_uint32()
-            vertexScale = br.read_float()
+            vertexScale = br.read_float32()
             finalScale = ((vertexScale / 256)  / 16) * 0.01
             if sectionType == 0:
                 for i in range(count):
@@ -573,7 +573,7 @@ class ccsModel(BrStruct):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
-        self.vertexScale = br.read_float()
+        self.vertexScale = br.read_float32()
         self.modelType = br.read_uint8()
         self.modelFlags = br.read_uint8()
         self.meshCount = br.read_uint16()
@@ -588,7 +588,7 @@ class ccsModel(BrStruct):
 
         if version > 0x110:
             self.outlineColor = br.read_uint8(4)
-            self.outlineWidth = br.read_float()
+            self.outlineWidth = br.read_float32()
         
         #print(f'LookupListCount = {self.LookupListCount}')
         # Replaced 'and' with 'or' to import some models needs to be looked into

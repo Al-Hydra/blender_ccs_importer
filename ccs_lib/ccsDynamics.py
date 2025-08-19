@@ -53,11 +53,11 @@ class springBone(BrStruct):
 
     def __br_read__(self, br: BinaryReader):
         self.boneIndex = br.read_uint32()
-        self.params = br.read_float(3)
+        self.params = br.read_float32(3)
 
     def __br_write__(self, br: BinaryReader):
         br.write_uint32(self.boneIndex)
-        br.write_float(self.params)
+        br.write_float32(self.params)
 
 
 class collision(BrStruct):
@@ -70,12 +70,12 @@ class collision(BrStruct):
     
     def __br_read__(self, br: BinaryReader):
         self.boneIndex = br.read_uint32()
-        self.position = br.read_float(3)
-        self.rotation = br.read_float(3)
-        self.scale = br.read_float(3)
+        self.position = br.read_float32(3)
+        self.rotation = br.read_float32(3)
+        self.scale = br.read_float32(3)
 
     def __br_write__(self, br: BinaryReader):
         br.write_uint32(self.boneIndex)
-        br.write_float(self.position)
-        br.write_float(self.rotation)
-        br.write_float(self.scale)
+        br.write_float32(self.position)
+        br.write_float32(self.rotation)
+        br.write_float32(self.scale)

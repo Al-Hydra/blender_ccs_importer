@@ -16,12 +16,12 @@ FMT = {
 }
 
 
-class Endian(Flag):
-    LITTLE = False
-    BIG = True
+class Endian:
+    LITTLE = "<"
+    BIG = ">"
 
 
-class Whence(IntEnum):
+class Whence:
     BEGIN = 0
     CUR = 1
     END = 2
@@ -183,8 +183,7 @@ class BinaryReader:
         if self.__past_eof(self.__idx):
             raise ValueError('Cannot read farther than buffer length.')
 
-        end = ">" if self.__endianness else "<"
-        return struct.unpack_from(f'{end}{count}{format}', self.__buf, i)
+        return struct.unpack_from(f'{self.__endianness}{count}{format}', self.__buf, i)
 
     def read_bytes(self, size=1) -> bytes:
         """Reads a bytes object with the given size from the current position."""
@@ -291,7 +290,7 @@ class BinaryReader:
             return self.__read_type("B", count)
         return self.__read_type("B")[0]
 
-    def read_float(self, count=None) -> Union[float, Tuple[float]]:
+    def read_float32(self, count=None) -> Union[float, Tuple[float]]:
         """Reads a 32-bit float.\n
         If count is given, will return a tuple of values instead of 1 value.
         """

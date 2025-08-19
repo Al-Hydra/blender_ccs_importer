@@ -109,7 +109,7 @@ def indexed8ToTGA(width, height, indices, colorPalette):
     tga = TGA()
 
     # Convert indices and colorPalette to NumPy arrays
-    indices_array = np.array(indices, dtype=np.uint8)
+    indices_array = np.frombuffer(indices, dtype=np.uint8)
     colorPalette_array = np.array(colorPalette, dtype=np.uint8)
 
     # Use indices_array as index to colorPalette_array
@@ -141,7 +141,7 @@ def indexed8ToTGA(width, height, indices, colorPalette):
 def indexed4ToTGA(width, height, indices, colorPalette):
     tga = TGA()
 
-    indices  = np.array(indices, dtype=np.uint8)
+    indices  = np.frombuffer(indices, dtype=np.uint8)
     colorPalette = np.array(colorPalette, dtype=np.uint8)
 
     # Use bitwise operations to extract lower and upper nibbles

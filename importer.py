@@ -816,7 +816,6 @@ class importCCS:
                 ccsMaterial_path = os.path.join(dir_path, ccsMaterial_path)
                 
                 with bpy.data.libraries.load(ccsMaterial_path) as (data_from, data_to):
-                    material_name = data_from.materials[1]
                     data_to.materials = ["ccsMaterial"]
 
                 mat = bpy.data.materials["ccsMaterial"].copy()

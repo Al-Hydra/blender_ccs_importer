@@ -2,7 +2,7 @@ from .utils.PyBinaryReader.binary_reader import *
 import struct
 from .ccsTypes import CCSTypes, ccsDict
 from collections import defaultdict
-
+import numpy as np
 def anmChunkReader(self, br: BinaryReader, indexTable, version):
     current_frame = 0
     self.cameras = defaultdict(dict)
@@ -16,79 +16,87 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.lights = defaultdict(dict)
     self.animationLoops = False
 
+    def read_frame():
+        nonlocal current_frame
+        current_frame = br.read_int32()
+
+    def read_object_controller():
+        self.objectControllers.append(br.read_struct(objectController, None, current_frame))
+
+    def read_object_frame():
+        obj_f = br.read_struct(objectFrame, None, current_frame, indexTable)
+        self.objects[obj_f.name][current_frame] = (
+            obj_f.position, obj_f.rotation, obj_f.scale, obj_f.opacity
+        )
+
+    def read_camera_frame():
+        cam_f = br.read_struct(cameraFrame, None, current_frame, indexTable)
+        self.cameras[cam_f.name][current_frame] = (
+            cam_f.position, cam_f.rotation, cam_f.fov
+        )
+
+    def read_morph_controller():
+        self.morphControllers.append(br.read_struct(morphController, None, current_frame))
+
+    def read_morph_frame():
+        morph_f = br.read_struct(morphFrame, None, current_frame, indexTable)
+        morph_f_morph = self.morphs[morph_f.morph]
+        for morph_t, value in morph_f.morphTargets.items():
+            morph_f_morph[morph_t][morph_f.frame] = [1 - value]
+
+    def read_material_controller():
+        self.materialControllers.append(
+            br.read_struct(materialController, None, current_frame, indexTable)
+        )
+
+    def read_material_frame():
+        material_f = br.read_struct(materialFrame, None, current_frame, indexTable, version)
+        self.materials[material_f.name][current_frame] = (
+            material_f.offsetX, material_f.offsetY, material_f.scaleX, material_f.scaleY
+        )
+
+    def read_pcm_frame():
+        self.pcmFrames[current_frame] = br.read_struct(PCMFrame, None, current_frame)
+
+    def read_distant_light_frame():
+        light_f = br.read_struct(distantLightFrame, None, current_frame, indexTable)
+        self.lights[light_f.lightObject][current_frame] = (
+            light_f.rotation, light_f.color, light_f.intensity
+        )
+
+    def read_ambient_frame():
+        ambient_f = br.read_struct(ambientFrame, None, current_frame)
+        self.lights['Ambient'][current_frame] = ambient_f.color
+
+    # Dispatch table
+    chunk_handlers = {
+        CCSTypes.Frame: read_frame,
+        CCSTypes.ObjectController: read_object_controller,
+        CCSTypes.ObjectFrame: read_object_frame,
+        CCSTypes.CameraFrame: read_camera_frame,
+        CCSTypes.MorphController: read_morph_controller,
+        CCSTypes.MorphFrame: read_morph_frame,
+        CCSTypes.MaterialController: read_material_controller,
+        CCSTypes.MaterialFrame: read_material_frame,
+        CCSTypes.PCMFrame: read_pcm_frame,
+        CCSTypes.DistantLightFrame: read_distant_light_frame,
+        CCSTypes.AmbientFrame: read_ambient_frame,
+    }
+
+    # Main loop
     while current_frame > -1:
-        # Read chunk type and size
-        #print(f"reading anm chunk at {hex(br.pos())}")
         chunk_type = CCSTypes(br.read_uint16())
-        br.seek(2, 1)  # Skip padding
+        br.seek(2, 1)  # skip padding
         chunk_size = br.read_uint32()
 
-        if chunk_type == CCSTypes.Frame:
-            # Directly update current frame
-            current_frame = br.read_int32()
-
-        elif chunk_type == CCSTypes.ObjectController:
-            # Read and append object controller
-            self.objectControllers.append(br.read_struct(objectController, None, current_frame))
-
-        elif chunk_type == CCSTypes.ObjectFrame:
-            # Process object frame data
-            obj_f = br.read_struct(objectFrame, None, current_frame, indexTable)
-            self.objects[obj_f.name][current_frame] = (
-                obj_f.position, obj_f.rotation, obj_f.scale, obj_f.opacity
-            )
-
-        elif chunk_type == CCSTypes.CameraFrame:
-            # Process camera frame data
-            cam_f = br.read_struct(cameraFrame, None, current_frame, indexTable)
-            self.cameras[cam_f.name][current_frame] = (
-                cam_f.position, cam_f.rotation, cam_f.fov
-            )
-
-        elif chunk_type == CCSTypes.MorphController:
-            # Read and append morph controller
-            self.morphControllers.append(br.read_struct(morphController, None, current_frame))
-
-        elif chunk_type == CCSTypes.MorphFrame:
-            # Process morph frame data
-            morph_f = br.read_struct(morphFrame, None, current_frame, indexTable)
-            morph_f_morph = self.morphs[morph_f.morph]
-            for morph_t, value in morph_f.morphTargets.items():
-                morph_f_morph[morph_t][morph_f.frame] = [1 - value]
-
-        elif chunk_type == CCSTypes.MaterialController:
-            # Read and append material controller
-            self.materialControllers.append(
-                br.read_struct(materialController, None, current_frame, indexTable)
-            )
-
-        elif chunk_type == CCSTypes.MaterialFrame:
-            # Process material frame data
-            material_f = br.read_struct(materialFrame, None, current_frame, indexTable, version)
-            self.materials[material_f.name][current_frame] = (
-                material_f.offsetX, material_f.offsetY, material_f.scaleX, material_f.scaleY
-            )
-
-        elif chunk_type == CCSTypes.PCMFrame:
-            # Process PCM frame data
-            self.pcmFrames[current_frame] = br.read_struct(PCMFrame, None, current_frame)
-        
-        elif chunk_type == CCSTypes.DistantLightFrame:
-            # Process distant light frame data
-            light_f = br.read_struct(distantLightFrame, None, current_frame, indexTable)
-            self.lights[light_f.lightObject][current_frame] = (
-                light_f.rotation, light_f.color, light_f.intensity
-            )
-            
-        elif chunk_type == CCSTypes.AmbientFrame:
-            # Process ambient light frame data
-            ambient_f = br.read_struct(ambientFrame, None, current_frame)
-            self.lights['Ambient'][current_frame] = ambient_f.color
-
+        handler = chunk_handlers.get(chunk_type)
+        if handler:
+            handler()
         else:
             print(f"Skiped unknown chunk_type: {chunk_type}")
-            # Skip unknown chunk
+            # Unknown chunk; skip
             br.seek(chunk_size * 4, 1)
+
 
     if current_frame == -2:
         self.animationLoops = True
@@ -183,7 +191,16 @@ class objectController(BrStruct):
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.scales = readVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
-        self.opacity = readFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+        self.opacity = readfloat32(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+            br.write_uint32(self.objectIndex)
+            br.write_uint32(self.ctrlFlags)
+            writeVector(br, self.positions, self.ctrlFlags, currentFrame)
+            writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
+            writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
+            writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
+            writefloat32(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.objectIndex)
@@ -212,7 +229,7 @@ class cameraController(BrStruct):
         self.positions = readVector(br, self.positions, self.ctrlFlags, currentFrame)
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-        self.FOV = readFloat(br, self.FOV, self.ctrlFlags, currentFrame)
+        self.FOV = readfloat32(br, self.FOV, self.ctrlFlags, currentFrame)
 
     def finalize(self, chunks):
         self.camera = chunks[self.cameraIndex]
@@ -229,10 +246,18 @@ class materialController(BrStruct):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.ctrlFlags = br.read_uint32()
-        self.offsetX = readFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
-        self.offsetY = readFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
-        self.scaleX = readFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
-        self.scaleY = readFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+        self.offsetX = readfloat32(br, self.offsetX, self.ctrlFlags, currentFrame)
+        self.offsetY = readfloat32(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+        self.scaleX = readfloat32(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+        self.scaleY = readfloat32(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+            br.write_uint32(self.index)
+            br.write_uint32(self.ctrlFlags)
+            writefloat32(br, self.offsetX, self.ctrlFlags, currentFrame)
+            writefloat32(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+            writefloat32(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+            writefloat32(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
             br.write_uint32(self.index)
@@ -263,19 +288,19 @@ class materialFrame(BrStruct):
 
         if version < 0x120:
             if not self.ctrlFlags & 1:
-                self.offsetX = br.read_float()
+                self.offsetX = br.read_float32()
             if not self.ctrlFlags & 2:
-                self.offsetY = br.read_float()
+                self.offsetY = br.read_float32()
         
         else:
             if not self.ctrlFlags & 1:
-                self.offsetX = br.read_float()
-                self.offsetY = br.read_float()
+                self.offsetX = br.read_float32()
+                self.offsetY = br.read_float32()
             if not self.ctrlFlags & 2:
-                self.scaleX = br.read_float()
-                self.scaleY = br.read_float()
-                self.unk1 = br.read_float()
-                self.unk2 = br.read_float()
+                self.scaleX = br.read_float32()
+                self.scaleY = br.read_float32()
+                self.unk1 = br.read_float32()
+                self.unk2 = br.read_float32()
 
     def finalize(self, chunks):
         self.material = chunks[self.index]
@@ -299,7 +324,7 @@ class morphTarget(BrStruct):
         morphValues = {}
         self.index = br.read_uint32()
         ctrlFlags = br.read_uint32()
-        self.values = readFloat(br, morphValues, ctrlFlags, currentFrame)
+        self.values = readfloat32(br, morphValues, ctrlFlags, currentFrame)
 
 class morphFrame(BrStruct):
     def __init__(self):
@@ -312,7 +337,7 @@ class morphFrame(BrStruct):
         self.morphIndex = br.read_uint32()
         self.morph = indexTable.Names[self.morphIndex][0]
         self.targetsCount = br.read_uint32()
-        self.morphTargets = {indexTable.Names[br.read_uint32()][0]: br.read_float() for _ in range(self.targetsCount)}
+        self.morphTargets = {indexTable.Names[br.read_uint32()][0]: br.read_float32() for _ in range(self.targetsCount)}
         self.frame = currentFrame
 
     def finalize(self, chunks):
@@ -345,27 +370,28 @@ class objectFrame(BrStruct):
         self.name = indexTable.Names[self.objectIndex][0]
         self.frame = currentFrame
 
-        if not self.ctrlFlags & 2:
-            self.position[0] = br.read_float()
-        if not self.ctrlFlags & 4:
-            self.position[1] = br.read_float()
-        if not self.ctrlFlags & 8:
-            self.position[2] = br.read_float()
-        if not self.ctrlFlags & 10:
-            self.rotation[0] = br.read_float()
-        if not self.ctrlFlags & 20:
-            self.rotation[1] = br.read_float()
-        if not self.ctrlFlags & 40:
-            self.rotation[2] = br.read_float()
-        if not self.ctrlFlags & 80:
-            self.scale[0] = br.read_float()
-        if not self.ctrlFlags & 100:
-            self.scale[1] = br.read_float()
-        if not self.ctrlFlags & 200:
-            self.scale[2] = br.read_float()
-        if not self.ctrlFlags & 400:
-            self.opacity = br.read_float()
-        if not self.ctrlFlags & 800:
+        flags = self.ctrlFlags
+
+        # Table of (bitmask, destination list, index, read_func)
+        read_map = [
+            (0x2, self.position, 0, br.read_float32),
+            (0x4, self.position, 1, br.read_float32),
+            (0x8, self.position, 2, br.read_float32),
+            (0x10, self.rotation, 0, br.read_float32),
+            (0x20, self.rotation, 1, br.read_float32),
+            (0x40, self.rotation, 2, br.read_float32),
+            (0x80, self.scale,    0, br.read_float32),
+            (0x100, self.scale,   1, br.read_float32),
+            (0x200, self.scale,   2, br.read_float32),
+        ]
+
+        for bit, target, i, reader in read_map:
+            if not flags & bit:
+                target[i] = reader()
+
+        if not flags & 0x400:
+            self.opacity = br.read_float32()
+        if not flags & 0x800:
             self.has_model = br.read_uint32()
 
     def finalize(self, chunks):
@@ -387,21 +413,21 @@ class cameraFrame(BrStruct):
         self.frame = currentFrame
 
         if not self.ctrlFlags & 2:
-            self.position[0] = br.read_float()
+            self.position[0] = br.read_float32()
         if not self.ctrlFlags & 4:
-            self.position[1] = br.read_float()
+            self.position[1] = br.read_float32()
         if not self.ctrlFlags & 8:
-            self.position[2] = br.read_float()
+            self.position[2] = br.read_float32()
         if not self.ctrlFlags & 10:
-            self.rotation[0] = br.read_float()
+            self.rotation[0] = br.read_float32()
         if not self.ctrlFlags & 20:
-            self.rotation[1] = br.read_float()
+            self.rotation[1] = br.read_float32()
         if not self.ctrlFlags & 40:
-            self.rotation[2] = br.read_float()
+            self.rotation[2] = br.read_float32()
         if not self.ctrlFlags & 80:
-            self.unk = br.read_float()
+            self.unk = br.read_float32()
         if not self.ctrlFlags & 100:
-            self.fov = br.read_float()
+            self.fov = br.read_float32()
 
     def finalize(self, chunks):
         self.camera = chunks[self.index]
@@ -415,7 +441,7 @@ class shadowFrame(BrStruct):
 
     def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
         self.index = br.read_uint32()
-        self.position = br.read_float(3)
+        self.position = br.read_float32(3)
         self.color = br.read_uint8(4)
         self.frame = currentFrame
 
@@ -436,12 +462,12 @@ class distantLightFrame(BrStruct):
         self.name = indexTable.Names[self.index][1]
         
         self.flags = br.read_uint32()
-        self.rotation = br.read_float(3)
+        self.rotation = br.read_float32(3)
         self.color = br.read_uint8(4)
         self.frame = currentFrame
 
         if self.flags & 0x20:
-            self.intensity = br.read_float()
+            self.intensity = br.read_float32()
 
     def finalize(self, chunks):
         self.lightObject = chunks[self.index]
@@ -460,9 +486,12 @@ class ambientFrame(BrStruct):
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
-        vectorFrames = {br.read_int32(): br.read_float(3) for _ in range(frameCount)}
+        #vectorFrames = {br.read_int32(): br.read_float32(3) for _ in range(frameCount)}
+        vectorFrames = np.frombuffer(br.read_bytes(frameCount * 16), dtype=[('frame', 'i4'), ('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
+        vectorFrames = {frame['frame']: (frame['x'], frame['y'], frame['z']) for frame in vectorFrames}
+        
     elif ctrlFlags & 7 == 1:
-        vectorFrames[currentFrame] = br.read_float(3)
+        vectorFrames[currentFrame] = br.read_float32(3)
     return vectorFrames
 
 def writeVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
@@ -470,19 +499,20 @@ def writeVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
         br.write_uint32(len(vectorFrames))
         for f in vectorFrames:
             br.write_uint32(f)
-            br.write_float(vectorFrames[f])
+            br.write_float32(vectorFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in vectorFrames:
-            br.write_float(vectorFrames[f])
+            br.write_float32(vectorFrames[f])
     return
 
 
 def readRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
-        rotationFrames = {br.read_int32(): br.read_float(3) for _ in range(frameCount)}
+        rotationFrames = np.frombuffer(br.read_bytes(frameCount * 16), dtype=[('frame', 'i4'), ('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
+        rotationFrames = {frame['frame']: (frame['x'], frame['y'], frame['z']) for frame in rotationFrames}
     elif ctrlFlags & 7 == 1:
-        rotationFrames[currentFrame] = br.read_float(3)
+        rotationFrames[currentFrame] = br.read_float32(3)
     return rotationFrames
 
 def writeRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
@@ -490,17 +520,18 @@ def writeRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame
         br.write_uint32(len(rotationFrames))
         for f in rotationFrames:
             br.write_uint32(f)
-            br.write_float(rotationFrames[f])
+            br.write_float32(rotationFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in rotationFrames:
-            br.write_float(rotationFrames[f])
+            br.write_float32(rotationFrames[f])
     return
 
 
 def readRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 4:
         frameCount = br.read_uint32()
-        rotationFrames = {br.read_int32(): br.read_float(4) for _ in range(frameCount)}
+        rotationFrames = np.frombuffer(br.read_bytes(frameCount * 20), dtype=[('frame', 'i4'), ('x', 'f4'), ('y', 'f4'), ('z', 'f4'), ('w', 'f4')])
+        rotationFrames = {frame['frame']: (frame['x'], frame['y'], frame['z'], frame['w']) for frame in rotationFrames}
     return rotationFrames
 
 def writeRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame):
@@ -508,87 +539,40 @@ def writeRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
         br.write_uint32(len(rotationFrames))
         for f in rotationFrames:
             br.write_uint32(f)
-            br.write_float(rotationFrames[f])
+            br.write_float32(rotationFrames[f])
     return
 
 
-def readFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
+def readfloat32(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
-        floatFrames = {br.read_int32(): br.read_float() for _ in range(frameCount)}
+        floatFrames = np.frombuffer(br.read_bytes(frameCount * 8), dtype=[('frame', 'i4'), ('value', 'f4')])
+        floatFrames = {frame['frame']: frame['value'] for frame in floatFrames}
     elif ctrlFlags & 7 == 1:
-        floatFrames[currentFrame] = br.read_float()
+        floatFrames[currentFrame] = br.read_float32()
     return floatFrames
 
-def writeFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
+def writefloat32(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(floatFrames))
         for f in floatFrames:
             br.write_uint32(f)
-            br.write_float(floatFrames[f])
+            br.write_float32(floatFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in floatFrames:
-            br.write_float(floatFrames[f])
+            br.write_float32(floatFrames[f])
     return
 
 
 def readColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         frameCount = br.read_uint32()
-        for _ in range(frameCount):
-            frame = br.read_uint32()
-            colorFrames[frame] = br.read_uint8(4)
+        colorFrames = np.frombuffer(br.read_bytes(frameCount * 8), dtype=[('frame', 'i4'), ('r', 'u1'), ('g', 'u1'), ('b', 'u1'), ('a', 'u1')])
+        colorFrames = {frame['frame']: (frame['r'], frame['g'], frame['b'], frame['a']) for frame in colorFrames}
     elif ctrlFlags & 7 == 1:
         colorFrames[currentFrame] = br.read_uint8(4)
     return colorFrames
 
-class vector3(BrStruct):
-    def __init__(self):
-        self.x = 0
-        self.y = 0
-        self.z = 0
-
-    def __br_read__(self, br: BinaryReader):
-        self.x = br.read_float()
-        self.y = br.read_float()
-        self.z = br.read_float()
-
-class rotationEuler(BrStruct):
-    def __init__(self):
-        self.x = 0
-        self.y = 0
-        self.z = 0
-
-    def __br_read__(self, br: BinaryReader):
-        self.x = br.read_float()
-        self.y = br.read_float()
-        self.z = br.read_float()
-
-class rotationQuaternion(BrStruct):
-    def __init__(self):
-        self.x = 0
-        self.y = 0
-        self.z = 0
-        self.w = 0
-
-    def __br_read__(self, br: BinaryReader):
-        self.x = br.read_float()
-        self.y = br.read_float()
-        self.z = br.read_float()
-        self.w = br.read_float()
-
-class colorRGBA(BrStruct):
-    def __init__(self):
-        self.r = 0
-        self.g = 0
-        self.b = 0
-        self.a = 0
-
-    def __br_read__(self, br: BinaryReader):
-        self.r = br.read_uint8()
-        self.g = br.read_uint8()
-        self.b = br.read_uint8()
-        self.a = br.read_uint8()
 
 class PCMFrame(BrStruct):
     def __init__(self):

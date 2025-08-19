@@ -1,5 +1,5 @@
 from .utils.PyBinaryReader.binary_reader import *
-
+import numpy as np
 
 class ccsClut(BrStruct):
     def __init__(self):
@@ -20,8 +20,17 @@ class ccsClut(BrStruct):
         self.unk2 = br.read_uint16()
         self.unk3 = br.read_uint8()
         self.alphaFlag = br.read_int8()
-
+        
         self.colorCount = br.read_uint32()
+        '''palette = np.frombuffer(br.read_bytes(self.colorCount * 4), dtype=(np.uint8, 4))
+        #rearrange BGRA to RGBA
+        palette = palette[:, [2, 1, 0, 3]]
+        
+        #multiply alpha by 2
+        palette[:, 3] = np.clip(palette[:, 3] * 2, 0, 255)
+        
+        self.paletteData = palette'''
+
         for i in range(self.colorCount):
 
             color = br.read_uint8(4)

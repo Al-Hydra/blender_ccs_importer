@@ -14,8 +14,8 @@ class ccsBox(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
         self.modelIndex = br.read_uint32()
-        self.min = br.read_float(3)
-        self.max = br.read_float(3)
+        self.min = br.read_float32(3)
+        self.max = br.read_float32(3)
         
     def __br_write__(self, br: BinaryReader, version=0x120):
         br.write_uint32(self.index)

@@ -4,7 +4,7 @@ from .utils.bmp import I8toBMP, I4toBMP
 from .utils.dds import *
 from .utils.tga import *
 import math
-
+import numpy as np
 class textureTypes(Enum):
     RGBA32 = 0
     Indexed8 = 0x13
@@ -58,7 +58,7 @@ class ccsTexture(BrStruct):
             self.height = 1 <<self.height
             self.unk4 = br.read_uint32()
             self.textureDataSize = br.read_uint32()
-            self.textureData = br.read_uint8(self.textureDataSize << 2)
+            self.textureData = br.read_bytes(self.textureDataSize << 2)
 
             #Skip mip levels
             for i in range(self.mipmapsCount):
@@ -102,7 +102,7 @@ class ccsTexture(BrStruct):
 
     def convertTexture(self, rawPixels = False):
         if self.btx:
-            return bmxToDDS(self.btx)
+            return btxToDDS(self.btx)
         elif self.textureType == 0:
             return rgbaToTGA(self.width, self.height, self.textureData)
         elif self.textureType == 0x13:
@@ -178,7 +178,7 @@ class btxTexture(BrStruct):
         br.write_bytes(self.textureData)
 
 
-def bmxToDDS(bmx:btxTexture):
+def btxToDDS(bmx:btxTexture):
     dds = DDS()
     dds.magic = 'DDS '
     header = dds.header = DDS_Header()

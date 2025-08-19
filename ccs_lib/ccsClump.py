@@ -61,15 +61,15 @@ class Bone(BrStruct):
         self.clump = None
 
     def __br_read__(self, br: BinaryReader):
-        self.pos = br.read_float(3)
-        self.rot = br.read_float(3)
-        self.scale = br.read_float(3)
+        self.pos = br.read_float32(3)
+        self.rot = br.read_float32(3)
+        self.scale = br.read_float32(3)
 
 
     def __br_write__(self, br: BinaryReader):
-        br.write_float(self.pos)
-        br.write_float(self.rot)
-        br.write_float(self.scale)
+        br.write_float32(self.pos)
+        br.write_float32(self.rot)
+        br.write_float32(self.scale)
     
 
     def finalize(self, index, bones, chunks, clump):
