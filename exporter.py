@@ -88,9 +88,6 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
         ccsf = readCCS(self.filepath)
 
-        if self.version_0x131:
-            ccsf.version = 0x0131
-
         blender_model = context.object
         print(f"Exporting model: {blender_model.name}")
         print(f"Exporting model: {blender_model.parent}")
@@ -152,6 +149,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
         if self.version_0x131:
             exportVersion = 0x0131
+            ccsf.version = 0x0131
         else:
             exportVersion = ccsf.version
 
