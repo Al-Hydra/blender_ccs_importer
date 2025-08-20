@@ -16,6 +16,22 @@ class ccsMaterial(BrStruct):
         self.textureM = None
         self.version = 0
 
+        self.unk0 = 0
+        self.unk1 = 0
+        self.ambientColor = [0, 0, 0, 0]
+        self.textureNormIndex = 0
+        self.normalMapParam = 0
+        self.unk2 = 0
+        self.textureSpecIndex = 0
+        self.SpecularParam1 = 0
+        self.SpecularParam2 = 0
+        self.textureMultiIndex = 0
+        self.MultiTexParams = [0, 0, 0, 0]
+        self.MultiTexUV = [0, 0, 0, 0]
+        self.MultiTexSpeed = [0, 0]
+        self.EmissionColor = [0, 0, 0, 0]
+
+
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
