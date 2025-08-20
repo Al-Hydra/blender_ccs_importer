@@ -225,11 +225,3 @@ def btxToDDS(bmx:btxTexture):
     br = BinaryReader(endianness=Endian.LITTLE)
     br.write_struct(DDS(), dds)
     return br.buffer()
-
-
-def write_align(br: BinaryReader, align):
-    pos = br.pos()
-    pad = (align - (pos % align)) % align
-    if pad:
-        print(f'write_align padding: {pad}')
-        br.write_bytes(bytes(pad))

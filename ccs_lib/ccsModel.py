@@ -157,7 +157,7 @@ class RigidMesh(BrStruct):
 
         br.write_bytes(bytes(vpBuffer.buffer()))
         # br.align_pos(4)
-        write_align(br, 4)
+        br.align(4)
         br.write_bytes(bytes(vnBuffer.buffer()))
         br.write_bytes(bytes(vcBuffer.buffer()))
         br.write_bytes(bytes(uvBuffer.buffer()))
@@ -205,7 +205,7 @@ class ShadowMesh(BrStruct):
             br.write_int16(round(self.vertices[v].position[2] / finalScale))
 
         # br.align_pos(4)
-        write_align(br, 4)
+        br.align(4)
         for v in range((self.triangleVerticesCount // 3)):
             br.write_int32(self.triangles[v][0])
             br.write_int32(self.triangles[v][1])
@@ -465,7 +465,7 @@ class DeformableMesh(BrStruct):
                 br.write_int16(int(v_pos[2] / finalScale))
 
             # br.align_pos(4)
-            write_align(br, 4)
+            br.align(4)
 
             for v in range(self.vertexCount):
                 v_norm = self.vertices[v].normals[0]
@@ -794,7 +794,7 @@ class ccsModel(BrStruct):
                 br.write_uint8(self.lookupList[i])
                 
             # br.align_pos(4)
-            write_align(br, 4)
+            br.align(4)
 
         if self.meshCount > 0:
 
@@ -852,11 +852,3 @@ class DeformableVertex:
         self.boneIDs = [0, 0, 0, 0]
         self.triangleFlag = 0
         self.multiWeight = False
-
-
-def write_align(br: BinaryReader, align):
-    pos = br.pos()
-    pad = (align - (pos % align)) % align
-    if pad:
-        print(f'write_align padding: {pad}')
-        br.write_bytes(bytes(pad))

@@ -64,6 +64,9 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'HIDDEN', 'SKIP_SAVE'})
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+
+
+    version_0x131: BoolProperty(name = "Export as version 0x131", default = False) #type: ignore
     
     '''
     export_original_bone_data: bpy.props.BoolProperty(
@@ -75,12 +78,16 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
     def draw(self, context):
         layout = self.layout
+
+        row = layout.row()
+        row.prop(self, "version_0x131")
         #layout.prop(self, "export_original_bone_data")
     
     def execute(self, context):
         start_time = time()
 
         ccsf = readCCS(self.filepath)
+
         blender_model = context.object
         print(f"Exporting model: {blender_model.name}")
         print(f"Exporting model: {blender_model.parent}")
@@ -106,6 +113,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
+            bmesh.ops.triangulate(blender_mesh, faces=blender_mesh.faces)
             blender_mesh.calc_loop_triangles()
             blender_mesh.calc_tangents()
             #print(f"blender_mesh: {blender_mesh}")
@@ -138,7 +146,16 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         print(msg)
         self.report({'INFO'}, msg)
 
-        writeCCS(f"{self.filepath}", ccsf)
+
+        if self.version_0x131:
+            exportVersion = 0x0131
+            ccsf.version = 0x0131
+        else:
+            exportVersion = ccsf.version
+
+        writeCCS(f"{self.filepath}", ccsf, exportVersion)
+
+        print(f'Exported ccsf as version {ccsf.version}')
 
         return {'FINISHED'}
 
