@@ -1,5 +1,7 @@
 from enum import IntFlag
 from .utils.PyBinaryReader.binary_reader import *
+import numpy as np
+
 class ModelTypes(IntFlag):
     Rigid1 = 0
     Rigid2 = 1
@@ -24,32 +26,78 @@ class RigidMesh(BrStruct):
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
-        self.vertices = [Vertex(br.read_int16(3), scale= vertexScale) for i in range(self.vertexCount)]
+        # Positions: int16 xyz
+        pos_i16 = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype='i2').reshape(self.vertexCount, 3)
+        positions0 = pos_i16.astype(np.float32) * np.float32(finalScale)
+
+        # Align to 4 bytes
         br.align_pos(4)
 
-        for vertex in self.vertices:
-            vertex.normal = tuple((map(lambda x: x/64, br.read_int8(3))))
-            vertex.triangleFlag = br.read_int8()
+        # Normals + per-vertex flag: 3 * int8 + int8
+        n_i8 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
+        normals0      = n_i8[:, :3].astype(np.float32) / np.float32(64.0)
+        triangleFlag  = n_i8[:, 3].astype(np.int8, copy=False)
 
-        
-        if ((modelFlags & 2) == 0):
-            for vertex in self.vertices:
-                vertex.color = [min(255, br.read_uint8() * 2) for i in range(4)]
-        if ((modelFlags & 4) == 0):
+        # Allocate 4-slot containers
+        positions = np.zeros((self.vertexCount, 3), dtype=np.float32)
+        normals   = np.zeros((self.vertexCount, 3), dtype=np.float32)
+        boneIDs   = np.zeros((self.vertexCount, 4),    dtype=np.int32)
+        weights   = np.zeros((self.vertexCount, 4),    dtype=np.float32)
+
+        positions[:] = positions0
+        normals[:] = normals0
+        boneIDs[:,   0]    = self.parentIndex
+        weights[:,   0]    = 1.0
+
+        # Colors (present when (modelFlags & 2) == 0)
+        color = None
+        if (modelFlags & 2) == 0:
+            # 4 * uint8 per vertex, doubled and clamped to 255
+            col = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='u1').reshape(self.vertexCount, 4).astype(np.int16)
+            col = np.minimum(255, col * 2).astype(np.uint8)
+            color = col
+
+        # UVs (present when (modelFlags & 4) == 0)
+        UV = None
+        if (modelFlags & 4) == 0:
             if version >= 0x125:
-                for v in self.vertices:
-                    v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
-
+                # 16.16 fixed-point in int32
+                uv_i32 = np.frombuffer(br.read_bytes(self.vertexCount * 8), dtype='i4').reshape(self.vertexCount, 2)
+                UV = uv_i32.astype(np.float32) / np.float32(65536.0)
             else:
-                for v in self.vertices:
-                    v.UV = (br.read_int16() / 256, br.read_int16() / 256)
+                # int16 / 256
+                uv_i16 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(self.vertexCount, 2)
+                UV = uv_i16.astype(np.float32) / np.float32(256.0)
 
+        # Optional tangents/binormals (each: 3 * int8 + sign byte)
+        tangents = tangent_sign = bitangents = bitangent_sign = None
         if tanBinFlag:
-            for vertex in self.vertices:
-                vertex.Tangent = tuple((map(lambda x: x/64, br.read_int8(3))))
-                vertex.Tangent_triangleFlag = br.read_int8()
-                vertex.Binormal = tuple((map(lambda x: x/64, br.read_int8(3))))
-                vertex.Binormal_triangleFlag = br.read_int8()
+            t_i8   = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
+            b_i8   = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
+
+            tangents       = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            tangent_sign   = np.zeros((self.vertexCount, 4),    dtype=np.int8)
+            bitangents     = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            bitangent_sign = np.zeros((self.vertexCount, 4),    dtype=np.int8)
+
+            tangents[:, 0, :]     = t_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            tangent_sign[:, 0]    = t_i8[:, 3].astype(np.int8)
+            bitangents[:, 0, :]   = b_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            bitangent_sign[:, 0]  = b_i8[:, 3].astype(np.int8)
+
+        self.vertices =  {
+            "positions":     positions,      # (V,4,3) slot0 filled
+            "normals":       normals,        # (V,4,3) slot0 filled
+            "boneIDs":       boneIDs,        # (V,4)   slot0=parentIndex
+            "weights":       weights,        # (V,4)   slot0=1
+            "triangleFlag":  triangleFlag,   # (V,)
+            "color":         color,          # (V,4) uint8 or None
+            "UV":            UV,             # (V,2) float32 or None
+            "tangents":        tangents,        # (V,4,3) or None
+            "tangent_sign":    tangent_sign,    # (V,4)   or None
+            "bitangents":      bitangents,      # (V,4,3) or None
+            "bitangent_sign":  bitangent_sign,  # (V,4)   or None
+        }
 
 
     def __br_write__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110, tanBinFlag = 0):
@@ -133,10 +181,14 @@ class ShadowMesh(BrStruct):
     def __br_read__(self, br: BinaryReader, vertexScale=64):
         self.vertexCount = br.read_uint32()
         self.triangleVerticesCount = br.read_uint32()
-        self.vertices = [Vertex((br.read_int16(), br.read_int16(), br.read_int16()), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
+
+        self.vertices = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype=np.int16).reshape(-1, 3) / ((vertexScale / 256) / 16) * 0.01
+
+        #self.vertices = [Vertex((br.read_int16(), br.read_int16(), br.read_int16()), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
 
         br.align_pos(4)
-        self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
+        #self.triangles = [br.read_int32(3) for i in range((self.triangleVerticesCount // 3))]
+        self.triangles = np.frombuffer(br.read_bytes(self.triangleVerticesCount * 4), dtype=np.int32).reshape(-1, 3)
 
 
     def __br_write__(self, br: BinaryReader, vertexScale=64):
@@ -184,115 +236,213 @@ class DeformableMesh(BrStruct):
         #Single weight vertices
         if not self.deformableVerticesCount:
             boneID = br.read_uint32()
-            vpBuffer = BinaryReader(br.read_bytes(self.vertexCount * 6), encoding='cp932')
+            #vpBuffer = BinaryReader(br.read_bytes(self.vertexCount * 6), encoding='cp932')
+
+            # positions: int16 xyz, scaled
+            pos_i16 = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype='i2').reshape(self.vertexCount, 3)
+            positions0 = pos_i16.astype(np.float32) * np.float32(finalScale)
+
+            # align to 4 bytes (reader maintains its own cursor)
             br.align_pos(4)
-            vnBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
 
-            for i in range(self.vertexCount):
-                vertex = DeformableVertex()
-                vertex.positions[0] = ((vpBuffer.read_int16() * finalScale),
-                                        (vpBuffer.read_int16() * finalScale),
-                                        (vpBuffer.read_int16() * finalScale))
-                
-                vertex.boneIDs[0] = boneID
-                vertex.weights[0] = 1
-                vertex.normals[0] = (vnBuffer.read_int8() / 64,
-                                     vnBuffer.read_int8() / 64,
-                                     vnBuffer.read_int8() / 64)
-                vertex.triangleFlag = vnBuffer.read_int8()
+            # normals: int8 xyz, scaled
+            n_i8 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
+            normals0 = n_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            flags_i8 = n_i8[:, 3].astype(np.int8)  # triangle flags
 
-                self.vertices.append(vertex)
+            # 4-slot containers (SoA)
+            positions = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            normals   = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            boneIDs   = np.zeros((self.vertexCount, 4),    dtype=np.uint32)
+            weights   = np.zeros((self.vertexCount, 4),    dtype=np.float32)
+            flags     = np.zeros((self.vertexCount),    dtype=np.int8)
 
+            positions[:, 0, :] = positions0
+            normals[:,   0, :] = normals0
+            flags[:] = flags_i8
+
+            # constant boneID in slot0, weight 1.0 in slot0
+            boneIDs[:, 0] = boneID
+            weights[:, 0] = 1.0
+
+            # UVs
             if version > 0x125:
-                for v in self.vertices:
-                    v.UV = (br.read_int32() / 65536, br.read_int32() / 65536)
-
+                # Your code used float32/65536; preserved here.
+                # If these are actually fixed-point int16 UVs, switch dtype to e+'i2' and keep the /65536.
+                uv = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(self.vertexCount, 2) / np.float32(65536.0)
             else:
-                for v in self.vertices:
-                    v.UV = (br.read_int16() / 256, br.read_int16() / 256)
-                
+                uv = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(self.vertexCount, 2) / np.float32(256.0)
+            vertexUVs = uv.astype(np.float32, copy=False)
 
+            # Tangents (optional)
+            vertexTangents = None
+            vertexBitangents = None
             if tanBinFlag:
-                vtBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
-                vbnBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+                vertexTangents   = np.frombuffer(br.read_bytes(self.vertexCount * 16), dtype='f4').reshape(self.vertexCount, 4)
+                vertexBitangents = np.frombuffer(br.read_bytes(self.vertexCount * 16), dtype='f4').reshape(self.vertexCount, 4)
+
+            self.vertices = {
+                "positions": positions,            # (V,4,3) slot0 filled
+                "normals":   normals,              # (V,4,3) slot0 filled
+                "boneIDs":   boneIDs,              # (V,4)   slot0=bone_id
+                "weights":   weights,              # (V,4)   slot0=1
+                "UV":        vertexUVs,            # (V,2)
+                "tangents":  vertexTangents,       # (V,4) or None
+                "bitangents":vertexBitangents,     # (V,4) or None
+                "triangleFlags":     flags                   # (V,4)    int8
+            }
+
                 
 
         else: #multiple weights vertices
             if version < 0x125:
-                vpBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 8), encoding='cp932')
-                vnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
-                uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 4), encoding='cp932')
+                # --- raw reads ---
+                vp = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 8), dtype='i2').reshape(-1, 4)
+                vn = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
+                uv = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(-1, 2)
 
+                pos_i16  = vp[:, :3]                         # (Ndef,3) int16
+                params   = vp[:,  3].view('u2')       # (Ndef,)  uint16
+                norm_i8  = vn[:, :3]                         # (Ndef,3) int8
+                flags_i8 = vn[:,  3]                         # (Ndef,)  int8
 
-                for i in range(self.vertexCount):
+                # --- map deformable entries to vertices (1 or 2 per vertex) ---
+                first_idx  = np.empty(self.vertexCount, dtype=np.int32)
+                has_second = np.empty(self.vertexCount, dtype=bool)
 
-                    vertex = DeformableVertex()
-                    
-                    vertex.positions[0] = ((vpBuffer.read_int16() * finalScale),
-                                            (vpBuffer.read_int16() * finalScale),
-                                            (vpBuffer.read_int16() * finalScale))
+                i = 0
+                for v in range(self.vertexCount):
+                    first_idx[v] = i
+                    p = params[i]
+                    hs = ((p >> 9) & 1) == 0  # 0 => has second
+                    has_second[v] = hs
+                    i += 1 + (1 if hs else 0)
 
-                    vertParams = vpBuffer.read_uint16()
-                    vertex.boneIDs[0] = vertParams >> 10
-                    vertex.weights[0] = (vertParams & 0x1ff) / 256
+                if i != self.deformableVerticesCount:
+                    raise ValueError(f"Count mismatch: walked {i}, expected {self.deformableVerticesCount}")
 
-                    vertex.normals[0] = (vnBuffer.read_int8() / 64,
-                                        vnBuffer.read_int8() / 64,
-                                        vnBuffer.read_int8() / 64)
-                    vertex.triangleFlag = vnBuffer.read_int8()
-                    
-                    if ((vertParams >> 9) & 0x1) == 0:
-                        vertex.positions[1] = ((vpBuffer.read_int16()) * finalScale,
-                                            (vpBuffer.read_int16()) * finalScale,
-                                            (vpBuffer.read_int16()) * finalScale)
-                        
-                        secondParams = vpBuffer.read_uint16()
-                        vertex.weights[1] = (secondParams & 0x1ff) / 256
-                        vertex.boneIDs[1] = (secondParams >> 10)
+                second_idx = first_idx + 1
 
-                        vertex.normals[1] = (vnBuffer.read_int8() / 64,
-                                            vnBuffer.read_int8() / 64,
-                                            vnBuffer.read_int8() / 64)
-                        vertex.triangleFlag = vnBuffer.read_int8()
+                # --- allocate 4 slots per vertex ---
+                positions = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+                normals   = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+                boneIDs   = np.zeros((self.vertexCount, 4),    dtype=np.uint16)
+                weights   = np.zeros((self.vertexCount, 4),    dtype=np.float32)
+                flags     = np.zeros((self.vertexCount),    dtype=np.int8)
 
-                    vertex.UV = (uvBuffer.read_int16() / 256, uvBuffer.read_int16() / 256)
-                    
-                    self.vertices.append(vertex)
-            
+                # slot 0
+                s0 = first_idx
+                positions[:, 0, :] = pos_i16[s0].astype(np.float32) * np.float32(finalScale)
+                p0 = params[s0]
+                boneIDs[:, 0] = (p0 >> 10).astype(np.uint16)
+                weights[:, 0] = (p0 & 0x1FF).astype(np.float32) / np.float32(256.0)
+                normals[:, 0, :] = norm_i8[s0].astype(np.float32) / np.float32(64.0)
+                flags[:] = flags_i8[s0]
+                # slot 1 (only where present)
+                if has_second.any():
+                    s1 = second_idx[has_second]
+                    positions[has_second, 1, :] = pos_i16[s1].astype(np.float32) * np.float32(finalScale)
+                    p1 = params[s1]
+                    boneIDs[has_second, 1] = (p1 >> 10).astype(np.uint16)
+                    weights[has_second, 1] = (p1 & 0x1FF).astype(np.float32) / np.float32(256.0)
+                    normals[has_second, 1, :] = norm_i8[s1].astype(np.float32) / np.float32(64.0)
+
+                # UVs
+                if version > 0x125:
+                    UV = uv.astype(np.float32) / np.float32(65536.0)  # (V,2)
+                else:
+                    UV = uv.astype(np.float32) / np.float32(256.0)  # (V,2)
+
+                self.vertices = {
+                    "positions": positions,  # (V,4,3)  float32
+                    "normals":   normals,    # (V,4,3)  float32
+                    "boneIDs":   boneIDs,    # (V,4)    uint16
+                    "weights":   weights,    # (V,4)    float32
+                    "UV":        UV,         # (V,2)    float32
+                    "triangleFlags":     flags         # (V,4)    int8
+                }
+
             else:
-                vpBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 0x0c), encoding='cp932')
-                vnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
-                uvBuffer = BinaryReader(br.read_bytes(self.vertexCount * 8), encoding='cp932')
+                # vp: x,y,z, weight, stopBit, boneID  (all int16)  -> 6 * i16 = 12 bytes
+                vp_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 0x0C), dtype='i2').reshape(-1, 6)
 
+                # vn: nx, ny, nz, flag (all int8) -> 4 bytes
+                vn_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
+
+                # optional: tangents / bitangents (assumed int8[4] same as normals)
+                vt_raw = vbn_raw = None
                 if tanBinFlag:
-                    vtBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
-                    vbnBuffer = BinaryReader(br.read_bytes(self.deformableVerticesCount * 4), encoding='cp932')
+                    vt_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
+                    vbn_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
 
-                for i in range(self.vertexCount):
-                    vertex = DeformableVertex()
+                # --- UVs: 16.16 fixed-point in int32 ---
+                uv_raw = np.frombuffer(br.read_bytes(self.vertexCount * 8), dtype='i4').reshape(-1, 2)
 
+                # --- outputs: 4 slots per vertex ---
+                positions = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+                normals   = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+                boneIDs   = np.zeros((self.vertexCount, 4),    dtype=np.uint16)
+                weights   = np.zeros((self.vertexCount, 4),    dtype=np.float32)
+                flags     = np.zeros(self.vertexCount,         dtype=np.int8)
+                UV        = np.zeros((self.vertexCount, 2),    dtype=np.float32)
+
+                # Tangents/bitangents (optional)
+                tangents        = np.zeros((self.vertexCount, 4, 3), dtype=np.float32) if tanBinFlag else None
+                tangent_sign    = np.zeros((self.vertexCount, 4),    dtype=np.int8)    if tanBinFlag else None
+                bitangents      = np.zeros((self.vertexCount, 4, 3), dtype=np.float32) if tanBinFlag else None
+                bitangent_sign  = np.zeros((self.vertexCount, 4),    dtype=np.int8)    if tanBinFlag else None
+
+                # --- walk deformable entries per vertex until stopBit ---
+                idx = 0
+                for v in range(self.vertexCount):
+                    slot = 0
                     stopBit = 0
-                    i = 0
-                    while(stopBit == 0):
-                        vertex.positions[i] = ((vpBuffer.read_int16() * finalScale),
-                                                    (vpBuffer.read_int16() * finalScale),
-                                                    (vpBuffer.read_int16() * finalScale))
-                        
-                        vertex.weights[i] = vpBuffer.read_int16() / 256
-                        stopBit = vpBuffer.read_int16()
-                        vertex.boneIDs[i] = vpBuffer.read_int16()
+                    while stopBit == 0 and slot < 4:
+                        x, y, z, w_i16, stop_i16, bone_i16 = vp_raw[idx]
+                        nx, ny, nz, flag = vn_raw[idx]
 
-                        vertex.normals[i] =  (vnBuffer.read_int8() / 64,
-                                            vnBuffer.read_int8() / 64,
-                                            vnBuffer.read_int8() / 64)
-                        
-                        vertex.triangleFlag = vnBuffer.read_int8()
+                        # positions, weights, bone ids
+                        positions[v, slot] = (x*finalScale, y*finalScale, z*finalScale)
+                        weights[v, slot]   = w_i16 / 256.0
+                        boneIDs[v, slot]   = np.uint16(bone_i16)
 
-                        i += 1
+                        # normals + triangle flag (last seen wins)
+                        normals[v, slot] = (nx/64.0, ny/64.0, nz/64.0)
+                        flags[v] = flag
 
-                    vertex.UV = (uvBuffer.read_int32() / 65536, uvBuffer.read_int32() / 65536)
+                        # tangents / bitangents (assumed int8 packing like normals)
+                        if tanBinFlag:
+                            tx, ty, tz, ts = vt_raw[idx]
+                            bx, by, bz, bs = vbn_raw[idx]
+                            tangents[v, slot]       = (tx/64.0, ty/64.0, tz/64.0)
+                            tangent_sign[v, slot]   = ts   # keep raw sign/flag byte
+                            bitangents[v, slot]     = (bx/64.0, by/64.0, bz/64.0)
+                            bitangent_sign[v, slot] = bs
 
-                    self.vertices.append(vertex)
+                        stopBit = stop_i16
+                        idx += 1
+                        slot += 1
+
+                    # UVs: 16.16 fixed-point -> float
+                    u_i32, v_i32 = uv_raw[v]
+                    UV[v] = (u_i32/65536.0, v_i32/65536.0)
+
+                # --- package ---
+                self.vertices = {
+                    "positions":     positions,     # (V,4,3)
+                    "normals":       normals,       # (V,4,3)
+                    "boneIDs":       boneIDs,       # (V,4)
+                    "weights":       weights,       # (V,4)
+                    "triangleFlag":  flags,         # (V,)
+                    "UV":            UV,            # (V,2)
+                }
+                if tanBinFlag:
+                    self.vertices.update({
+                        "tangents":        tangents,        # (V,4,3)
+                        "tangent_sign":    tangent_sign,    # (V,4)  int8
+                        "bitangents":      bitangents,      # (V,4,3)
+                        "bitangent_sign":  bitangent_sign,  # (V,4)  int8
+                    })
 
 
     def __br_write__(self, br: BinaryReader, vertexScale=256, version = 0x120, tanBinFlag = 0):
@@ -481,7 +631,7 @@ class unkMesh(BrStruct):
             sectionType = br.read_uint8()
             br.seek(2, 1)
             count = br.read_uint32()
-            vertexScale = br.read_float()
+            vertexScale = br.read_float32()
             finalScale = ((vertexScale / 256)  / 16) * 0.01
             if sectionType == 0:
                 for i in range(count):
@@ -573,7 +723,7 @@ class ccsModel(BrStruct):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
-        self.vertexScale = br.read_float()
+        self.vertexScale = br.read_float32()
         self.modelType = br.read_uint8()
         self.modelFlags = br.read_uint8()
         self.meshCount = br.read_uint16()
@@ -588,7 +738,7 @@ class ccsModel(BrStruct):
 
         if version > 0x110:
             self.outlineColor = br.read_uint8(4)
-            self.outlineWidth = br.read_float()
+            self.outlineWidth = br.read_float32()
         
         #print(f'LookupListCount = {self.LookupListCount}')
         # Replaced 'and' with 'or' to import some models needs to be looked into
@@ -668,8 +818,8 @@ class ccsModel(BrStruct):
 
 
     def finalize(self, chunks):
-        if self.lookupList:
-            self.lookuplistnames = [chunks.get(i).name for i in self.lookupList]
+        if self.lookupList and self.clump:
+            self.lookuplistnames = [chunks.get(self.clump.boneIndices[i]).name for i in self.lookupList]
             #print(f'lookuplistnames = {self.lookuplistnames}')
 
         for mesh in self.meshes:

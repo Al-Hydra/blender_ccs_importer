@@ -243,5 +243,5 @@ def unregister():
     del bpy.types.Scene.ccs_importer
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
-    bpy.utils.register_class(CCS_IMPORTER_OT_EXPORT)
-    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    bpy.utils.unregister_class(CCS_IMPORTER_OT_EXPORT)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)

@@ -33,10 +33,10 @@ class ccsEffect(BrStruct):
         unk1 = br.read_int16()
         self.frameCount = br.read_int16()
         
-        self.vOffset_Left = br.read_float()     * 0.01  #verts 0, 2
-        self.vOffset_Bottem = br.read_float()   * 0.01  #verts 0, 1
-        self.vOffset_Right = br.read_float()    * 0.01  #verts 1, 3
-        self.vOffset_Top = br.read_float()      * 0.01  #verts 2, 3
+        self.vOffset_Left = br.read_float32()     * 0.01  #verts 0, 2
+        self.vOffset_Bottem = br.read_float32()   * 0.01  #verts 0, 1
+        self.vOffset_Right = br.read_float32()    * 0.01  #verts 1, 3
+        self.vOffset_Top = br.read_float32()      * 0.01  #verts 2, 3
         
         self.scaledX = br.read_int16() * 0.0002441406
         self.scaledY = br.read_int16() * 0.0002441406

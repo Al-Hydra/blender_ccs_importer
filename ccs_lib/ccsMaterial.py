@@ -38,7 +38,7 @@ class ccsMaterial(BrStruct):
         self.path = indexTable.Names[self.index][1]
 
         self.textureIndex = br.read_uint32()
-        self.alpha = br.read_float()
+        self.alpha = br.read_float32()
         if version > 0x130:
             self.version = version
             self.offsetX = br.read_int16() / 4096
@@ -49,15 +49,15 @@ class ccsMaterial(BrStruct):
             self.unk1 = br.read_int32()
             self.ambientColor = br.read_uint8(4)
             self.textureNormIndex = br.read_uint32()
-            self.normalMapParam = br.read_float()
+            self.normalMapParam = br.read_float32()
             self.unk2 = br.read_int32()
             self.textureSpecIndex = br.read_uint32()
-            self.SpecularParam1 = br.read_float()
-            self.SpecularParam2 = br.read_float()
+            self.SpecularParam1 = br.read_float32()
+            self.SpecularParam2 = br.read_float32()
             self.textureMultiIndex = br.read_uint32()
             self.MultiTexParams = br.read_uint8(4)
-            self.MultiTexUV = br.read_float(4)
-            self.MultiTexSpeed = br.read_float(2)
+            self.MultiTexUV = br.read_float32(4)
+            self.MultiTexSpeed = br.read_float32(2)
             self.EmissionColor = br.read_uint8(4)
         elif version == 0x130:
             self.offsetX = br.read_int16() / 4096
@@ -77,7 +77,7 @@ class ccsMaterial(BrStruct):
     def __br_write__(self, br: BinaryReader, version):
         br.write_uint32(self.index)
         br.write_uint32(self.textureIndex)
-        br.write_float(self.alpha)
+        br.write_float32(self.alpha)
         if version > 0x130:
             print(f'TODO: Export matertials for versions over 0x130')
             br.write_uint16(int(self.offsetX * 4096))
@@ -91,15 +91,15 @@ class ccsMaterial(BrStruct):
             br.write_uint8(self.ambientColor[2])
             br.write_uint8(self.ambientColor[3])
             br.write_uint32(self.textureNormIndex)
-            br.write_float(self.normalMapParam)
+            br.write_float32(self.normalMapParam)
             br.write_uint32(self.unk2)
             br.write_uint32(self.textureSpecIndex)
-            br.write_float(self.SpecularParam1)
-            br.write_float(self.SpecularParam2)
+            br.write_float32(self.SpecularParam1)
+            br.write_float32(self.SpecularParam2)
             br.write_uint32(self.textureMultiIndex)
             br.write_uint8(self.MultiTexParams)
-            br.write_float(self.MultiTexUV)
-            br.write_float(self.MultiTexSpeed)
+            br.write_float32(self.MultiTexUV)
+            br.write_float32(self.MultiTexSpeed)
             br.write_uint8(self.EmissionColor)
         elif version == 0x130:
             br.write_uint16(int(self.offsetX * 4096))

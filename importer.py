@@ -226,7 +226,7 @@ class DropCCS(Operator):
     target_skeleton: StringProperty(name = "Target Armature") #type: ignore
     slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
-    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
+    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = True) #type: ignore
     find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
     import_models: BoolProperty(name = "Import Models", default = True) #type: ignore
     import_animations: BoolProperty(name = "Import Animations", default = True) #type: ignore
@@ -413,20 +413,20 @@ class importCCS:
             #Effects
             for effChunk in self.ccsf.sortedChunks["Effect"]:
                 effectClump = bpy.data.objects.get(effChunk.clump.name) if effChunk.clump else None      
-                if effectClump:
-                    if effChunk.model:
-                        self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
-                        #print(f'import | Perant.bone {effChunk.name}')
-                        
-                else:
-                    #Set Reference bone
+                if not effectClump:
                     if effChunk.AnmObject.parent.type == "ExternalObject":
                         #for extChunk in self.ccsf.sortedChunks["ExternalObject"]:
                         for objChunk in self.ccsf.sortedChunks["Object"]:
                             if effChunk.AnmObject.parent.name == objChunk.name:
                                 if effChunk.model:
                                     self.makeEffects(effChunk.model, None, objChunk.clump, objChunk.name)
-                                    #print(f'import | Perant.bone {objChunk.name}')
+                
+                if not effChunk.model:
+                    continue
+                else:
+                    self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
+                        #print(f'import | Perant.bone {effChunk.name}')
+                        
                            
                 if self.import_animations and effChunk.model:
                     frames = effChunk.frameCount
@@ -612,25 +612,128 @@ class importCCS:
 
     def makeModels(self, model, clump, parentBone):
         model_name = parentBone.replace("OBJ_", "MDL_")
-        if model != None and model.type == 'Model':
-            if model.meshCount > 0 and model.modelType & 8 and self.import_shadow:
-                for i, mesh in enumerate(model.meshes):
-                    bm = bmesh.new()
+        if model == None or model.type != 'Model':
+            return
 
-                    verts = [bm.verts.new(v.position) for v in mesh.vertices]
-                    bm.verts.ensure_lookup_table()
-                    
-                    triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
-                    bm.faces.ensure_lookup_table()                        
+        if model.modelType & 8 and self.import_shadow:
+            for i, mesh in enumerate(model.meshes):
+                bm = bmesh.new()
 
-                    blender_mesh = bpy.data.meshes.new(f'{model_name}')
-                    bm.to_mesh(blender_mesh)
+                verts = [bm.verts.new(v.position) for v in mesh.vertices]
+                bm.verts.ensure_lookup_table()
+                
+                triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
+                bm.faces.ensure_lookup_table()                        
 
-                    obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
-                    self.collection.objects.link(obj)
+                blender_mesh = bpy.data.meshes.new(f'{model_name}')
+                bm.to_mesh(blender_mesh)
+
+                obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
+                self.collection.objects.link(obj)
+        
+
+        elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
+            #Create the object and its mesh data
+            meshdata = bpy.data.meshes.new(f'{model_name}')
+            obj = bpy.data.objects.new(f'{model_name}', meshdata)
+            obj["emissive"] = 0
+            obj["invert_colors"] = 0
+            obj["opacity"] = 1
+            if model.matFlags1 & 1:
+                obj["emissive"] = 1
+            elif model.matFlags1 & 2:
+                obj["emissive"] = 1
+                obj["invert_colors"] = 1
             
+            #find the armature and add all the bones to a dict
+            armature = bpy.data.objects.get(clump.name)
+            bone_indices = {}
+            for i in range(len(armature.pose.bones)):
+                obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                bone_indices[armature.pose.bones[i].name] = i
+            
+            normals = []
+            vCount = 0
+            bm = bmesh.new()
+            vgroup_layer = bm.verts.layers.deform.new("Weights")
+            uv_layer = bm.loops.layers.uv.new(f"UV")
+            color_layer = bm.loops.layers.color.new(f"Color")
 
-            elif model.meshCount > 0 and model.modelType & 4 and not model.modelType & 2:
+            for mesh in model.meshes:
+                
+                #add the mesh material
+                mat = self.makeMaterial(model, mesh)
+                mat_slot = obj.material_slots.get(mat.name)
+                if obj["emissive"]:
+                        mat.surface_render_method = 'BLENDED'
+                        mat.use_transparency_overlap = True
+                if mat_slot:
+                    matIndex = mat_slot.slot_index
+                else:
+                    obj.data.materials.append(mat)
+                    mat_slot = obj.material_slots.get(mat.name)
+                    matIndex = mat_slot.slot_index
+
+                #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
+                self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, color_layer, vCount)                       
+                vCount = len(bm.verts)
+            
+            bm.to_mesh(meshdata)
+            bm.free()
+            
+            meshdata.normals_split_custom_set_from_vertices(normals)
+
+            self.collection.objects.link(obj)
+            obj.parent = armature
+
+            #add armature modifier
+            armature_modifier = obj.modifiers.new(name = f'{armature.name}', type = 'ARMATURE')
+            armature_modifier.object = armature
+
+        elif model.meshCount > 0 and model.modelType & 2:
+                for mesh in model.meshes:
+                    meshdata = bpy.data.meshes.new(f'{model_name}')
+                    obj = bpy.data.objects.new(f'{model_name}', meshdata)
+                    obj["emissive"] = 0
+                    obj["invert_colors"] = 0
+                    obj["opacity"] = 1
+                    if model.matFlags1 & 1:
+                        obj["emissive"] = 1
+                    elif model.matFlags1 & 2:
+                        obj["emissive"] = 1
+                        obj["invert_colors"] = 1
+
+                    bone_indices = {}
+                    parent_clump = bpy.data.objects.get(clump.name)
+                    for i in range(len(parent_clump.pose.bones)):
+                        obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
+                        bone_indices[parent_clump.pose.bones[i].name] = i
+
+                    meshdata = self.makeMeshTriList(meshdata, model, mesh, bone_indices, parent_clump)
+
+                    #add the mesh material
+                    mat = self.makeMaterial(model, mesh)
+                    if obj["emissive"]:
+                        mat.surface_render_method = 'BLENDED'
+                        mat.use_transparency_overlap = True
+                    obj.data.materials.append(mat)
+
+                    if model.clump:
+                        clump = bpy.data.objects.get(model.clump.name)
+                        parent = clump.pose.bones.get(model.parentBone.name)
+                        if parent:
+                            meshdata.transform(parent.matrix)
+
+                        obj.parent = clump
+                        
+                #add armature modifier
+                armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
+                armature_modifier.object = parent_clump
+                self.collection.objects.link(obj)
+
+        else:
+            #single bone
+            if model.meshCount > 0 and model.modelType < 2:
                 #Create the object and its mesh data
                 meshdata = bpy.data.meshes.new(f'{model_name}')
                 obj = bpy.data.objects.new(f'{model_name}', meshdata)
@@ -644,155 +747,54 @@ class importCCS:
                     obj["invert_colors"] = 1
                 
                 #find the armature and add all the bones to a dict
-                armature = bpy.data.objects.get(clump.name)
-                bone_indices = {}
-                for i in range(len(armature.pose.bones)):
-                    obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                    bone_indices[armature.pose.bones[i].name] = i
-                
-                normals = []
-                vCount = 0
-                bm = bmesh.new()
-                vgroup_layer = bm.verts.layers.deform.new("Weights")
-                uv_layer = bm.loops.layers.uv.new(f"UV")
-                color_layer = bm.loops.layers.color.new(f"Color")
-
-                for mesh in model.meshes:
+                if hasattr(clump, "name"):
                     
-                    #add the mesh material
-                    mat = self.makeMaterial(model, mesh)
-                    mat_slot = obj.material_slots.get(mat.name)
-                    if obj["emissive"]:
-                            mat.surface_render_method = 'BLENDED'
-                            mat.use_transparency_overlap = True
-                    if mat_slot:
-                        matIndex = mat_slot.slot_index
-                    else:
-                        obj.data.materials.append(mat)
-                        mat_slot = obj.material_slots.get(mat.name)
-                        matIndex = mat_slot.slot_index
+                    armature = bpy.data.objects.get(clump.name)
+                    parent = armature.data.bones.get(parentBone)
+                    if not parent:
+                        parent = armature.data.bones[0]
 
-                    #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
-                    self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, color_layer, vCount)                       
-                    vCount = len(bm.verts)
-                
-                bm.to_mesh(meshdata)
-                bm.free()
-                
-                meshdata.normals_split_custom_set_from_vertices(normals)
-    
-                self.collection.objects.link(obj)
-                obj.parent = armature
-
-                #add armature modifier
-                armature_modifier = obj.modifiers.new(name = f'{armature.name}', type = 'ARMATURE')
-                armature_modifier.object = armature
-
-            elif model.meshCount > 0 and model.modelType & 2:
-                    for mesh in model.meshes:
-                        meshdata = bpy.data.meshes.new(f'{model_name}')
-                        obj = bpy.data.objects.new(f'{model_name}', meshdata)
-                        obj["emissive"] = 0
-                        obj["invert_colors"] = 0
-                        obj["opacity"] = 1
-                        if model.matFlags1 & 1:
-                            obj["emissive"] = 1
-                        elif model.matFlags1 & 2:
-                            obj["emissive"] = 1
-                            obj["invert_colors"] = 1
-
-                        bone_indices = {}
-                        parent_clump = bpy.data.objects.get(clump.name)
-                        for i in range(len(parent_clump.pose.bones)):
-                            obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                            bone_indices[parent_clump.pose.bones[i].name] = i
-
-                        meshdata = self.makeMeshTriList(meshdata, model, mesh, bone_indices, parent_clump)
-
+                    bone_indices = {}
+                    for i in range(len(armature.pose.bones)):
+                        obj.vertex_groups.new(name = armature.pose.bones[i].name)
+                        bone_indices[armature.pose.bones[i].name] = i
+                    
+                    normals = []
+                    bm = bmesh.new()
+                    uv_layer = bm.loops.layers.uv.new(f"UV")
+                    color_layer = bm.loops.layers.color.new(f"Color")
+                    vgroup_layer = bm.verts.layers.deform.new("Weights")
+                    vCount = 0
+                    
+                    for m, mesh in enumerate(model.meshes):
                         #add the mesh material
                         mat = self.makeMaterial(model, mesh)
                         if obj["emissive"]:
                             mat.surface_render_method = 'BLENDED'
                             mat.use_transparency_overlap = True
-                        obj.data.materials.append(mat)
-
-                        if model.clump:
-                            clump = bpy.data.objects.get(model.clump.name)
-                            parent = clump.pose.bones.get(model.parentBone.name)
-                            if parent:
-                                meshdata.transform(parent.matrix)
-
-                            obj.parent = clump
-                            
-                    #add armature modifier
-                    armature_modifier = obj.modifiers.new(name = f'{parent_clump.name}', type = 'ARMATURE')
-                    armature_modifier.object = parent_clump
-                    self.collection.objects.link(obj)
-
-            else:
-                #single bone
-                if model.meshCount > 0 and model.modelType < 2:
-                    #Create the object and its mesh data
-                    meshdata = bpy.data.meshes.new(f'{model_name}')
-                    obj = bpy.data.objects.new(f'{model_name}', meshdata)
-                    obj["emissive"] = 0
-                    obj["invert_colors"] = 0
-                    obj["opacity"] = 1
-                    if model.matFlags1 & 1:
-                        obj["emissive"] = 1
-                    elif model.matFlags1 & 2:
-                        obj["emissive"] = 1
-                        obj["invert_colors"] = 1
-                    
-                    #find the armature and add all the bones to a dict
-                    if hasattr(clump, "name"):
-                        
-                        armature = bpy.data.objects.get(clump.name)
-                        parent = armature.data.bones.get(parentBone)
-                        if not parent:
-                            parent = armature.data.bones[0]
-
-                        bone_indices = {}
-                        for i in range(len(armature.pose.bones)):
-                            obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                            bone_indices[armature.pose.bones[i].name] = i
-                        
-                        normals = []
-                        bm = bmesh.new()
-                        uv_layer = bm.loops.layers.uv.new(f"UV")
-                        color_layer = bm.loops.layers.color.new(f"Color")
-                        vgroup_layer = bm.verts.layers.deform.new("Weights")
-                        vCount = 0
-                        
-                        for m, mesh in enumerate(model.meshes):
-                            #add the mesh material
-                            mat = self.makeMaterial(model, mesh)
-                            if obj["emissive"]:
-                                mat.surface_render_method = 'BLENDED'
-                                mat.use_transparency_overlap = True
+                        mat_slot = obj.material_slots.get(mat.name)
+                        if mat_slot:
+                            matIndex = mat_slot.slot_index
+                        else:
+                            obj.data.materials.append(mat)
                             mat_slot = obj.material_slots.get(mat.name)
-                            if mat_slot:
-                                matIndex = mat_slot.slot_index
-                            else:
-                                obj.data.materials.append(mat)
-                                mat_slot = obj.material_slots.get(mat.name)
-                                matIndex = mat_slot.slot_index
-                            
-                            self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, uv_layer, color_layer, vgroup_layer, vCount)
-                            vCount = len(bm.verts)
+                            matIndex = mat_slot.slot_index
                         
-                        bm.to_mesh(meshdata)
-                        
-                        meshdata.normals_split_custom_set_from_vertices(normals)
+                        self.makeMeshSingleWeight(bm, mesh, parent, bone_indices, matIndex, normals, uv_layer, color_layer, vgroup_layer, vCount)
+                        vCount = len(bm.verts)
+                    
+                    bm.to_mesh(meshdata)
+                    
+                    meshdata.normals_split_custom_set_from_vertices(normals)
 
-                        obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
-                        obj.modifiers['Armature'].object = armature
-                        #set the active color layer
-                        meshdata.vertex_colors.active = meshdata.vertex_colors[0]
+                    obj.modifiers.new(name = 'Armature', type = 'ARMATURE')
+                    obj.modifiers['Armature'].object = armature
+                    #set the active color layer
+                    meshdata.vertex_colors.active = meshdata.vertex_colors[0]
 
-                        obj.parent = armature
+                    obj.parent = armature
 
-                        self.collection.objects.link(obj)
+                    self.collection.objects.link(obj)
 
 
     def makeMaterial(self, model, mesh):
@@ -816,7 +818,6 @@ class importCCS:
                 ccsMaterial_path = os.path.join(dir_path, ccsMaterial_path)
                 
                 with bpy.data.libraries.load(ccsMaterial_path) as (data_from, data_to):
-                    material_name = data_from.materials[1]
                     data_to.materials = ["ccsMaterial"]
 
                 mat = bpy.data.materials["ccsMaterial"].copy()
@@ -851,52 +852,67 @@ class importCCS:
         return mat
 
 
-    def makeMeshSingleWeight(self, bm, mesh, parent, boneIndices, matIndex, normals,uv_layer, color_layer, vgroup_layer, vCount):
+    def makeMeshSingleWeight(self, bm, mesh_np, parent, boneIndices, matIndex,
+                                normals_out, uv_layer, color_layer, vgroup_layer, vCount):
+        pos0 = mesh_np.vertices["positions"]   # (V,3)
+        nrm0 = mesh_np.vertices["normals"]  # (V,3)
+        flags = mesh_np.vertices["triangleFlag"]        # (V,)
+        uvs   = mesh_np.vertices.get("UV", None)        # (V,2) or None
+        cols  = mesh_np.vertices.get("color", None)     # (V,4) u8 or None
 
-            boneID = boneIndices[parent.name]
+        # parent transform (rigid)
+        M4 = Matrix(parent["matrix"])
+        R3 = M4.to_3x3()
 
-            #Triangles
-            direction = 1
-            for i, v in enumerate(mesh.vertices):
+        # vertex group index for this bone
+        boneID = boneIndices[parent.name]
 
-                #transform vertices by their parent bone
-                vp = Matrix(parent["matrix"]) @ Vector(v.position)
-                vn = Matrix(parent["matrix"]).to_3x3() @ Vector(v.normal)
+        # 1) Create verts (transform slot0 pos/nrm), set group weight=1, collect normals
+        bm_verts = [None] * pos0.shape[0]
+        for i in range(pos0.shape[0]):
+            vp = M4 @ Vector(pos0[i])
+            vn = R3 @ Vector(nrm0[i])
 
-                bmVertex = bm.verts.new(vp)
-                bmVertex[vgroup_layer][boneID] = 1
-                
-                #normals must be normalized
-                normals.append(vn.normalized())
+            v = bm.verts.new(vp)
+            v[vgroup_layer][boneID] = 1.0
 
+            normals_out.append(vn.normalized())
+            bm_verts[i] = v
 
-                bm.verts.ensure_lookup_table()
-                bm.verts.index_update()
+        # 2) Build faces using triangleFlag strip logic
+        direction = 1
+        for i in range(2, pos0.shape[0]):
+            f = int(flags[i])
+            if f == 1:
+                direction = 1
+                continue
+            elif f == 2:
+                direction = -1
+                continue
 
-                flag = v.triangleFlag
-                
-                if flag == 1:
-                    direction = 1
-                elif flag == 2:
-                    direction = -1
-                
-                if flag == 0:
-                    if direction == 1:
-                        face = bm.faces.new((bm.verts[vCount + i-2], bm.verts[vCount + i-1], bm.verts[vCount + i]))
-                    elif direction == -1:
-                        face = bm.faces.new((bm.verts[vCount + i], bm.verts[vCount + i-1], bm.verts[vCount + i-2]))
-                    
-                    face.material_index = matIndex  
+            # f == 0 → emit triangle
+            if i >= 2:
+                idxs = (i-2, i-1, i) if direction == 1 else (i, i-1, i-2)
+                try:
+                    face = bm.faces.new((bm_verts[idxs[0]], bm_verts[idxs[1]], bm_verts[idxs[2]]))
+                except ValueError:
+                    face = None  # already exists; safe to skip
+
+                if face:
+                    face.material_index = matIndex
                     face.smooth = True
-                    for loop in face.loops:
-                        loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
-                        color = mesh.vertices[loop.vert.index - vCount].color
-                        loop[color_layer] = [(c / 255) for c in color]
-                    
-                    #we need to flip the direction for the next face
+
+                    # per-loop UV + color
+                    if uv_layer is not None and uvs is not None:
+                        for loop, vi in zip(face.loops, idxs):
+                            loop[uv_layer].uv = uvs[vi]
+                    if color_layer is not None and cols is not None:
+                        for loop, vi in zip(face.loops, idxs):
+                            c = cols[vi]  # uint8[4]
+                            loop[color_layer] = (c[0]/255.0, c[1]/255.0, c[2]/255.0, c[3]/255.0)
+
+                    # flip for next face
                     direction *= -1
-            
-            bm.faces.ensure_lookup_table()
 
 
     def makeMeshTriList(self, meshdata, model, mesh, bone_indices, parent_clump):
@@ -975,84 +991,107 @@ class importCCS:
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
     
-    def makeMeshMultiWeight(self, bm, model, mesh, bone_indices, matIndex, normals, clump: ccsClump, vgroup_layer, uv_layer, color_layer, vCount): 
+    def makeMeshMultiWeight(self, bm, model, mesh_np, bone_indices, matIndex, normals_out,
+                                clump, vgroup_layer, uv_layer, color_layer, vCount):
+        # 1) Bones list (same semantics as your original)
         if not model.lookupList:
-            bones = [bone for bone in clump.bones.values()]
+            bones = [b for b in clump.bones.values()]
         else:
             bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
-            #print(f'bones = {bones}')
-            #for i , bone in enumerate(bones):
-            #    print(f'bone.name {i} {bone.name}')
 
-        for i, ccsVertex in enumerate(mesh.vertices):
-            #calculate vertex final position
-            boneID1 = bones[ccsVertex.boneIDs[0]]
-            boneID2 = bones[ccsVertex.boneIDs[1]]
-            boneID3 = bones[ccsVertex.boneIDs[2]]
-            boneID4 = bones[ccsVertex.boneIDs[3]]
+        V = mesh_np.vertices["positions"].shape[0]
+        pos   = mesh_np.vertices["positions"]     # (V,4,3)
+        nrm   = mesh_np.vertices["normals"]       # (V,4,3)
+        bids  = mesh_np.vertices["boneIDs"]       # (V,4)
+        wts   = mesh_np.vertices["weights"]       # (V,4)
+        uvs   = mesh_np.vertices["UV"]            # (V,2)
+        flags = mesh_np.vertices["triangleFlags"]  # (V,)
 
-            vertex_matrix1 = Matrix(boneID1.matrix)
-            vertex_matrix2 = Matrix(boneID2.matrix)
-            vertex_matrix3 = Matrix(boneID3.matrix)
-            vertex_matrix4 = Matrix(boneID4.matrix)
+        # 2) Cache bone matrices/rotations once
+        bone_mats = [Matrix(b.matrix) for b in bones]         # 4x4
+        bone_rot3 = [m.to_3x3() for m in bone_mats]           # 3x3
 
-            #positions
-            vp1 = (vertex_matrix1 @ Vector(ccsVertex.positions[0]) * ccsVertex.weights[0]) 
-            vp2 = (vertex_matrix2 @ Vector(ccsVertex.positions[1]) * ccsVertex.weights[1])
-            vp3 = (vertex_matrix3 @ Vector(ccsVertex.positions[2]) * ccsVertex.weights[2])
-            vp4 = (vertex_matrix4 @ Vector(ccsVertex.positions[3]) * ccsVertex.weights[3])
+        # 3) Create verts (accumulated skinned position); collect bm verts in a list
+        bm_verts = [None] * V
+        for i in range(V):
+            # gather up to 4 influences (many will be zeros for slots 2–3)
+            ids = bids[i]
+            ws  = wts[i]
+            p4  = pos[i]
 
-            #normals
-            vn1 = vertex_matrix1.to_3x3() @ Vector(ccsVertex.normals[0]) 
-            #vn2 = vertex_matrix2.to_3x3() @ Vector(ccsVertex.normals[1])
-            #vn3 = vertex_matrix3.to_3x3() @ Vector(ccsVertex.normals[2])
-            #vn4 = vertex_matrix4.to_3x3() @ Vector(ccsVertex.normals[3])
-            normal = vn1 #+ vn2 + vn3 + vn4  #only the first normals vector is needed
+            # accumulate skinned position
+            acc = Vector((0.0, 0.0, 0.0))
+            # slot 0
+            if ws[0] != 0.0:
+                acc += (bone_mats[ids[0]] @ Vector(p4[0])) * ws[0]
+            # slot 1
+            if ws[1] != 0.0:
+                acc += (bone_mats[ids[1]] @ Vector(p4[1])) * ws[1]
+            # slot 2
+            if ws[2] != 0.0:
+                acc += (bone_mats[ids[2]] @ Vector(p4[2])) * ws[2]
+            # slot 3
+            if ws[3] != 0.0:
+                acc += (bone_mats[ids[3]] @ Vector(p4[3])) * ws[3]
 
-            bmVertex = bm.verts.new(vp1 + vp2 + vp3 + vp4)
+            v = bm.verts.new(acc)
+            bm_verts[i] = v
 
-            #normals must be normalized
-            normals.append(normal.normalized())
-            
-            bm.verts.ensure_lookup_table()
-            bm.verts.index_update()            
+            # normal: use slot 0’s rotation only (matches your original)
+            n0 = Vector(nrm[i, 0])
+            n_world = bone_rot3[ids[0]] @ n0
+            normals_out.append(n_world.normalized())
 
-            #add vertex groups with 0 weights
-            boneID1 = bone_indices[boneID1.name]
-            boneID2 = bone_indices[boneID2.name]
-            boneID3 = bone_indices[boneID3.name]
-            boneID4 = bone_indices[boneID4.name]
-            
-            bmVertex[vgroup_layer][boneID1] = 0
-            bmVertex[vgroup_layer][boneID2] = 0
-            bmVertex[vgroup_layer][boneID3] = 0
-            bmVertex[vgroup_layer][boneID4] = 0
+            # vertex groups / weights (write only non-zero)
+            # map bone indices (into `bones`) -> group indices via names
+            if ws[0] != 0.0:
+                gi = bone_indices[bones[ids[0]].name]
+                v[vgroup_layer][gi] = ws[0]
+            if ws[1] != 0.0:
+                gi = bone_indices[bones[ids[1]].name]
+                v[vgroup_layer][gi] = ws[1]
+            if ws[2] != 0.0:
+                gi = bone_indices[bones[ids[2]].name]
+                v[vgroup_layer][gi] = ws[2]
+            if ws[3] != 0.0:
+                gi = bone_indices[bones[ids[3]].name]
+                v[vgroup_layer][gi] = ws[3]
 
-            bmVertex[vgroup_layer][boneID1] += ccsVertex.weights[0]
-            bmVertex[vgroup_layer][boneID2] += ccsVertex.weights[1]
-            bmVertex[vgroup_layer][boneID3] += ccsVertex.weights[2]
-            bmVertex[vgroup_layer][boneID4] += ccsVertex.weights[3]
+        # 4) Faces: follow your triangleFlag/direction rules while we stream the strip
+        direction = 1  # default flip state if we see a tri before an explicit 1/2
+        for i in range(V):
+            flag = int(flags[i])
 
-
-            flag = ccsVertex.triangleFlag
-            
             if flag == 1:
                 direction = 1
+                continue
             elif flag == 2:
                 direction = -1
-            
-            if flag == 0:
+                continue
+
+            # flag == 0 -> emit a triangle using (i-2, i-1, i) with direction
+            if i >= 2:
                 if direction == 1:
-                    face = bm.faces.new((bm.verts[vCount + (i-2)], bm.verts[vCount + (i-1)], bm.verts[vCount + i]))
-                elif direction == -1:
-                    face = bm.faces.new((bm.verts[vCount + i], bm.verts[vCount + i-1], bm.verts[vCount + i-2]))
-                face.material_index = matIndex
-                face.smooth = True
-                for loop in face.loops:
-                    loop[uv_layer].uv = mesh.vertices[loop.vert.index - vCount].UV
-                    loop[color_layer] = 1, 1, 1, 1
-                    #loop[color_layer] = mesh.vertices[loop.vert.index].color
-                #we need to flip the direction for the next face
+                    idxs = (i - 2, i - 1, i)
+                else:
+                    idxs = (i, i - 1, i - 2)
+
+                try:
+                    face = bm.faces.new((bm_verts[idxs[0]], bm_verts[idxs[1]], bm_verts[idxs[2]]))
+                except ValueError:
+                    # face may already exist in certain data; skip safely
+                    face = None
+
+                if face:
+                    face.material_index = matIndex
+                    face.smooth = True
+
+                    # assign per-loop UV/color using the three source vertex indices
+                    for loop, vidx in zip(face.loops, idxs):
+                        loop[uv_layer].uv = uvs[vidx]
+                        loop[color_layer] = (1.0, 1.0, 1.0, 1.0)
+
+                # flip direction for next emitted face
                 direction *= -1
         
         #clean up the mesh

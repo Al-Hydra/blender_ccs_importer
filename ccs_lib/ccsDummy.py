@@ -11,7 +11,7 @@ class ccsDummyPos(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
 
-        self.position = br.read_float(3)
+        self.position = br.read_float32(3)
     
     def finalize(*args):
         pass
@@ -28,8 +28,8 @@ class ccsDummyPosRot(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
 
-        self.position = br.read_float(3)
-        self.rotation = br.read_float(3)
+        self.position = br.read_float32(3)
+        self.rotation = br.read_float32(3)
     
     def finalize(*args):
         pass
