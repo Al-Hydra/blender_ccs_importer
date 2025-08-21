@@ -64,6 +64,9 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'HIDDEN', 'SKIP_SAVE'})
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+
+
+    version_0x131: BoolProperty(name = "Export as version 0x131", default = False) #type: ignore
     
     '''
     export_original_bone_data: bpy.props.BoolProperty(
@@ -75,12 +78,16 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
     def draw(self, context):
         layout = self.layout
+
+        row = layout.row()
+        row.prop(self, "version_0x131")
         #layout.prop(self, "export_original_bone_data")
     
     def execute(self, context):
         start_time = time()
 
         ccsf = readCCS(self.filepath)
+
         blender_model = context.object
         print(f"Exporting model: {blender_model.name}")
         print(f"Exporting model: {blender_model.parent}")
@@ -107,7 +114,9 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
             blender_mesh.calc_loop_triangles()
-            blender_mesh.calc_tangents()
+            if mdlChunk.tangentBinormalsFlag:
+                print(f'TODO: Export Tangents & Binormals')
+                blender_mesh.calc_tangents()
             #print(f"blender_mesh: {blender_mesh}")
 
             if not blender_mesh.color_attributes:
@@ -138,7 +147,16 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         print(msg)
         self.report({'INFO'}, msg)
 
-        writeCCS(f"{self.filepath}", ccsf)
+
+        if self.version_0x131:
+            exportVersion = 0x0131
+            ccsf.version = 0x0131
+        else:
+            exportVersion = ccsf.version
+
+        writeCCS(f"{self.filepath}", ccsf, exportVersion)
+
+        print(f'Exported ccsf as version {ccsf.version}')
 
         return {'FINISHED'}
 
@@ -209,8 +227,8 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             #mesh_v.binormals = tuple(bi)
             mesh_v.color = col
             mesh_v.UV = uv
-            #mesh_v.triangleFlag = 0
-            mesh_v.triangleFlag = triFlag
+            #mesh_v.triangleFlags = 0
+            mesh_v.triangleFlags = triFlag
 
             mesh.vertices.append(mesh_v)
             next_index += 1
@@ -423,8 +441,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     mesh_v.weights = [1,0,0,0]
                     mesh_v.UV = uv
                     mesh_v.boneIDs = [bone_idx,0,0,0] # Bone bone_idx
-                    #mesh_v.triangleFlag = 0
-                    mesh_v.triangleFlag = triFlag
+                    #mesh_v.triangleFlags = 0
+                    mesh_v.triangleFlags = triFlag
                     mesh_v.multiWeight = False
 
                     mesh.vertices.append(mesh_v)
@@ -517,8 +535,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 mesh_v.weights = [weights[0],weights[1],weights[2],weights[3]]
                 mesh_v.UV = uv
                 mesh_v.boneIDs = [boneIDs[0],boneIDs[1],boneIDs[2],boneIDs[3]] # Bone index
-                #mesh_v.triangleFlag = 0
-                mesh_v.triangleFlag = triFlag
+                #mesh_v.triangleFlags = 0
+                mesh_v.triangleFlags = triFlag
                 mesh_v.multiWeight = False
                 #print(f"len(pos): {len(norm)}")
                 if len(pos) > 1:

@@ -130,7 +130,7 @@ class RigidMesh(BrStruct):
             vnBuffer.write_int8(int(v_norm[0] * 64))
             vnBuffer.write_int8(int(v_norm[1] * 64))
             vnBuffer.write_int8(int(v_norm[2] * 64))
-            vnBuffer.write_int8(self.vertices[v].triangleFlag)
+            vnBuffer.write_int8(self.vertices[v].triangleFlags)
 
             if ((modelFlags & 2) == 0):
                 colCount += 1
@@ -143,7 +143,6 @@ class RigidMesh(BrStruct):
             if ((modelFlags & 4) == 0):
                 uvCount += 1
                 if version >= 0x125:
-                    print(f'UV VERSION: >= 0x125 UV: {self.vertices[v].UV[0]}, {self.vertices[v].UV[1]}')
                     uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
                     uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
                 else:
@@ -157,7 +156,7 @@ class RigidMesh(BrStruct):
 
         br.write_bytes(bytes(vpBuffer.buffer()))
         # br.align_pos(4)
-        write_align(br, 4)
+        br.align(4)
         br.write_bytes(bytes(vnBuffer.buffer()))
         br.write_bytes(bytes(vcBuffer.buffer()))
         br.write_bytes(bytes(uvBuffer.buffer()))
@@ -182,7 +181,8 @@ class ShadowMesh(BrStruct):
         self.vertexCount = br.read_uint32()
         self.triangleVerticesCount = br.read_uint32()
 
-        self.vertices = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype=np.int16).reshape(-1, 3) / ((vertexScale / 256) / 16) * 0.01
+        #self.vertices = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype=np.int16).reshape(-1, 3) / ((vertexScale / 256) / 16) * 0.01
+        self.vertices = np.frombuffer(br.read_bytes(self.vertexCount * 6), dtype=np.int16).reshape(-1, 3) * ((vertexScale / 256) / 16) * 0.01
 
         #self.vertices = [Vertex((br.read_int16(), br.read_int16(), br.read_int16()), (0,0,0), (0,0,0,0), (0, 0), vertexScale) for i in range(self.vertexCount)]
 
@@ -192,20 +192,18 @@ class ShadowMesh(BrStruct):
 
 
     def __br_write__(self, br: BinaryReader, vertexScale=64):
-        #br.write_uint32(0)
-        #br.write_uint32(0)
         br.write_uint32(self.vertexCount)
         br.write_uint32(self.triangleVerticesCount)
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
         for v in range(self.vertexCount):
-            br.write_int16(round(self.vertices[v].position[0] / finalScale))
-            br.write_int16(round(self.vertices[v].position[1] / finalScale))
-            br.write_int16(round(self.vertices[v].position[2] / finalScale))
+            br.write_int16(round(self.vertices[v][0] / finalScale))
+            br.write_int16(round(self.vertices[v][1] / finalScale))
+            br.write_int16(round(self.vertices[v][2] / finalScale))
 
         # br.align_pos(4)
-        write_align(br, 4)
+        br.align(4)
         for v in range((self.triangleVerticesCount // 3)):
             br.write_int32(self.triangles[v][0])
             br.write_int32(self.triangles[v][1])
@@ -269,7 +267,7 @@ class DeformableMesh(BrStruct):
             if version > 0x125:
                 # Your code used float32/65536; preserved here.
                 # If these are actually fixed-point int16 UVs, switch dtype to e+'i2' and keep the /65536.
-                uv = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(self.vertexCount, 2) / np.float32(65536.0)
+                uv = np.frombuffer(br.read_bytes(self.vertexCount * 8), dtype='i4').reshape(self.vertexCount, 2) / np.float32(65536.0)
             else:
                 uv = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i2').reshape(self.vertexCount, 2) / np.float32(256.0)
             vertexUVs = uv.astype(np.float32, copy=False)
@@ -278,8 +276,8 @@ class DeformableMesh(BrStruct):
             vertexTangents = None
             vertexBitangents = None
             if tanBinFlag:
-                vertexTangents   = np.frombuffer(br.read_bytes(self.vertexCount * 16), dtype='f4').reshape(self.vertexCount, 4)
-                vertexBitangents = np.frombuffer(br.read_bytes(self.vertexCount * 16), dtype='f4').reshape(self.vertexCount, 4)
+                vertexTangents   = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
+                vertexBitangents = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
 
             self.vertices = {
                 "positions": positions,            # (V,4,3) slot0 filled
@@ -433,7 +431,7 @@ class DeformableMesh(BrStruct):
                     "normals":       normals,       # (V,4,3)
                     "boneIDs":       boneIDs,       # (V,4)
                     "weights":       weights,       # (V,4)
-                    "triangleFlag":  flags,         # (V,)
+                    "triangleFlags":  flags,         # (V,)
                     "UV":            UV,            # (V,2)
                 }
                 if tanBinFlag:
@@ -465,14 +463,14 @@ class DeformableMesh(BrStruct):
                 br.write_int16(int(v_pos[2] / finalScale))
 
             # br.align_pos(4)
-            write_align(br, 4)
+            br.align(4)
 
             for v in range(self.vertexCount):
                 v_norm = self.vertices[v].normals[0]
                 br.write_int8(int(v_norm[0] * 64))
                 br.write_int8(int(v_norm[1] * 64))
                 br.write_int8(int(v_norm[2] * 64))
-                br.write_int8(self.vertices[v].triangleFlag)
+                br.write_int8(self.vertices[v].triangleFlags)
 
             if version > 0x125:
                 for v in self.vertices:
@@ -537,7 +535,7 @@ class DeformableMesh(BrStruct):
                     vnBuffer.write_int8(int(v_norm[0] * 64))
                     vnBuffer.write_int8(int(v_norm[1] * 64))
                     vnBuffer.write_int8(int(v_norm[2] * 64))
-                    vnBuffer.write_int8(self.vertices[v].triangleFlag)
+                    vnBuffer.write_int8(self.vertices[v].triangleFlags)
                     
                     if self.vertices[v].multiWeight:
                         normCount += 1
@@ -546,7 +544,7 @@ class DeformableMesh(BrStruct):
                         vnBuffer.write_int8(int(v_norm[0] * 64))
                         vnBuffer.write_int8(int(v_norm[1] * 64))
                         vnBuffer.write_int8(int(v_norm[2] * 64))
-                        vnBuffer.write_int8(self.vertices[v].triangleFlag)
+                        vnBuffer.write_int8(self.vertices[v].triangleFlags)
                     
                     uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
                     uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
@@ -575,7 +573,7 @@ class DeformableMesh(BrStruct):
                         vnBuffer.write_int8(int(v_norm[0] * 64))
                         vnBuffer.write_int8(int(v_norm[1] * 64))
                         vnBuffer.write_int8(int(v_norm[2] * 64))
-                        vnBuffer.write_int8(self.vertices[v].triangleFlag)
+                        vnBuffer.write_int8(self.vertices[v].triangleFlags)
 
                         if tanBinFlag:
                             v_tan = self.vertices[v].tangents[i]
@@ -774,7 +772,7 @@ class ccsModel(BrStruct):
     def __br_write__(self, br: BinaryReader, version=0x120):
         #print(f'Write chunk index: {self.index} name: {self.name}')
         br.write_uint32(self.index)
-        br.write_float(self.vertexScale)
+        br.write_float32(self.vertexScale)
         br.write_uint8(self.modelType)
         br.write_uint8(self.modelFlags)
         br.write_uint16(self.meshCount)
@@ -787,14 +785,14 @@ class ccsModel(BrStruct):
 
         if version > 0x110:
             br.write_uint8(self.outlineColor)
-            br.write_float(self.outlineWidth)
+            br.write_float32(self.outlineWidth)
 
         if ((self.modelType & 1) == 0) and (self.modelType & 4) and version > 0x111:
             for i in range(self.lookupListCount):
                 br.write_uint8(self.lookupList[i])
                 
             # br.align_pos(4)
-            write_align(br, 4)
+            br.align(4)
 
         if self.meshCount > 0:
 
@@ -850,13 +848,5 @@ class DeformableVertex:
         self.weights = [0, 0, 0, 0]
         self.UV = [0, 0]
         self.boneIDs = [0, 0, 0, 0]
-        self.triangleFlag = 0
+        self.triangleFlags = 0
         self.multiWeight = False
-
-
-def write_align(br: BinaryReader, align):
-    pos = br.pos()
-    pad = (align - (pos % align)) % align
-    if pad:
-        print(f'write_align padding: {pad}')
-        br.write_bytes(bytes(pad))
