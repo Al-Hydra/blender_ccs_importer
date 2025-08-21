@@ -179,7 +179,7 @@ class ccsHeader(BrStruct):
         br.write_uint16(CCSTypes.Header.value)
         br.write_uint16(0xCCCC)
         br.write_uint32(self.Size // 4)
-        br.write_str(self.Magic)
+        br.write_str_fixed(self.Magic, 4)
         br.write_str_fixed(self.FileName, 32)
         #br.write_uint32(self.Version)
         br.write_uint32(exportVersion)
