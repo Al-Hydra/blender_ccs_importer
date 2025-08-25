@@ -36,13 +36,13 @@ class ccsParticleGenerator(BrStruct):
         self.forceFieldCount = ((flags >> 0x10) & 0x0f)
         print(f'PartGen | {self.name} forceFieldCount = {self.forceFieldCount}')
 
-        self.fade_400 = br.read_float()
-        self.clip_50 = br.read_float()
-        self.fade_4000 = br.read_float()
-        self.clip_5000 = br.read_float()
-        self.unk1 = br.read_float()
-        self.unk2 = br.read_float()
-        self.unk3 = br.read_float()
+        self.fade_400 = br.read_float32()
+        self.clip_50 = br.read_float32()
+        self.fade_4000 = br.read_float32()
+        self.clip_5000 = br.read_float32()
+        self.unk1 = br.read_float32()
+        self.unk2 = br.read_float32()
+        self.unk3 = br.read_float32()
 
         # Read and append forceFieldParam
         for i in range(self.forceFieldCount):
@@ -96,16 +96,16 @@ class ccParticleGeneratorParam(BrStruct):
         self.unk01 = br.read_int16()
         print(f'PartGen  | GenParam unk01 -1 = {self.unk01}')
         br.seek(2, 1)  # Skip CCCC
-        self.unk02 = br.read_float()
+        self.unk02 = br.read_float32()
         self.unk03 = br.read_uint16()
         self.unk04 = br.read_uint16()
         self.unk05 = br.read_uint16()
         self.unk06 = br.read_uint16()
-        self.unk07 = br.read_float()
-        self.unk08 = br.read_float()
-        self.unk09 = br.read_float()
-        self.unk10 = br.read_float()
-        self.unk11 = br.read_float()
+        self.unk07 = br.read_float32()
+        self.unk08 = br.read_float32()
+        self.unk09 = br.read_float32()
+        self.unk10 = br.read_float32()
+        self.unk11 = br.read_float32()
         self.unk12 = br.read_int16()
         self.unk13 = br.read_int16()
         self.FadeInRate = br.read_int16() * 0.0004882813
@@ -156,11 +156,11 @@ class ccParticleForceFieldParam(BrStruct):
         self.unk2 = br.read_uint16()
         br.seek(2, 1)  # Skip CCCC
         #self.Param = br.read_struct(ForceFieldParam, None, self.type)
-        self.value0 = br.read_float()
-        self.value1 = br.read_float()
-        self.value2 = br.read_float()
-        self.value3 = br.read_float()
-        self.value4 = br.read_float()
+        self.value0 = br.read_float32()
+        self.value1 = br.read_float32()
+        self.value2 = br.read_float32()
+        self.value3 = br.read_float32()
+        self.value4 = br.read_float32()
 
 
 class ForceFieldTypes(Enum):
