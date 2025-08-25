@@ -194,22 +194,13 @@ class objectController(BrStruct):
         self.opacity = readFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
-            br.write_uint32(self.objectIndex)
-            br.write_uint32(self.ctrlFlags)
-            writeVector(br, self.positions, self.ctrlFlags, currentFrame)
-            writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
-            writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-            writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
-            writeFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
-
-    def __br_write__(self, br: BinaryReader, currentFrame):
-            br.write_uint32(self.objectIndex)
-            br.write_uint32(self.ctrlFlags)
-            writeVector(br, self.positions, self.ctrlFlags, currentFrame)
-            writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
-            writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-            writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
-            writeFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
+        br.write_uint32(self.objectIndex)
+        br.write_uint32(self.ctrlFlags)
+        writeVector(br, self.positions, self.ctrlFlags, currentFrame)
+        writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
+        writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
+        writeVector(br, self.scales, self.ctrlFlags >> 6, currentFrame)
+        writeFloat(br, self.opacity, self.ctrlFlags >> 9, currentFrame)
 
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]
@@ -252,20 +243,12 @@ class materialController(BrStruct):
         self.scaleY = readFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
-            br.write_uint32(self.index)
-            br.write_uint32(self.ctrlFlags)
-            writeFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
-            writeFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
-            writeFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
-            writeFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
-
-    def __br_write__(self, br: BinaryReader, currentFrame):
-            br.write_uint32(self.index)
-            br.write_uint32(self.ctrlFlags)
-            writeFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
-            writeFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
-            writeFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
-            writeFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
+        br.write_uint32(self.index)
+        br.write_uint32(self.ctrlFlags)
+        writeFloat(br, self.offsetX, self.ctrlFlags, currentFrame)
+        writeFloat(br, self.offsetY, self.ctrlFlags >> 3, currentFrame)
+        writeFloat(br, self.scaleX, self.ctrlFlags >> 6, currentFrame)
+        writeFloat(br, self.scaleY, self.ctrlFlags >> 9, currentFrame)
 
     def finalize(self, chunks):
         self.material = chunks[self.index]
