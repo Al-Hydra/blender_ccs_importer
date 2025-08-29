@@ -21,7 +21,7 @@ from .ccsParticleGenerator import ccsParticleGenerator
 from .ccsParticleAnmCtrl import ccsParticleAnmCtrl
 from time import perf_counter
 from .Anms import *
-import gzip, zlib
+import os, gzip, zlib
 from cProfile import Profile
 
 
@@ -261,12 +261,21 @@ def readCCS(filePath):
     return ccs
 
 
-def writeCCS(filePath,  ccs: ccsFile, exportVersion= 0x120):
+def writeCCS(filePath,  ccs: ccsFile, gzipOnExport=False, exportVersion=0x120):
     time = perf_counter()
+
+    dirname, basename = os.path.split(filePath)
+    name, ext = os.path.splitext(basename)
+    exportPath = os.path.join(dirname, f"{name}_EXPORT{ext}")
+
     br = BinaryReader(encoding= "cp932")
     br.write_struct(ccs, exportVersion)
-    with open(filePath, "wb") as f:
-        f.write(br.buffer())
+    with open(exportPath, "wb") as f:
+        if gzipOnExport:
+            f.write(gzip.compress(br.buffer()))
+            print("CCS written with gzip compression")
+        else:
+            f.write(br.buffer())
 
     print(f"CCS written in {perf_counter() - time} seconds")
 

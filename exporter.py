@@ -66,8 +66,34 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
 
 
-    version_0x131: BoolProperty(name = "Export as version 0x131", default = False) #type: ignore
+    removeWrongWeights: BoolProperty(name = "Remove incompatible weights from meshs in Blender", default = True) #type: ignore
+    skipExport: BoolProperty(name = "Skip export and just remove incompatible weights", default = True) #type: ignore
+
+    gzipOnExport: BoolProperty(name = "Compress ccs file with Gzip on export", default = False) #type: ignore
     
+    ccs_versions: bpy.props.EnumProperty(
+        name="Version",
+        items = [
+            ('FILE',    "Use selected file's version", "CCS"),
+            ('0x121',   "Version 0x121",    "CCS"),
+            ('0x123',   "Version 0x123",    "CCS"),
+            ('0x131',   "Version 0x131",    "CCS"),
+        ],
+        default = 'FILE',
+        description = "Select the CCS version to export as. (Use selected file's version) by default."
+    ) #type: ignore
+
+    @property
+    def selected_version(self):
+        version_map = {
+            'FILE'  : 0x000,  # Use file version
+            '0x121' : 0x121,
+            '0x123' : 0x123,
+            '0x125' : 0x125,
+            '0x131' : 0x131,
+        }
+        return version_map[self.ccs_versions]
+
     '''
     export_original_bone_data: bpy.props.BoolProperty(
         name="Use Original Bone Data",
@@ -79,26 +105,54 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
     def draw(self, context):
         layout = self.layout
 
-        row = layout.row()
-        row.prop(self, "version_0x131")
+        box = layout.box()
+        box.label(text = "Remove incompatible weights from meshs in Blender:")
+        box.prop(self, "removeWrongWeights", text = "Remove incompatible weights")
+        box.prop(self, "skipExport", text = "Skip Export (Just remove incompatible weights)")
+
+        box = layout.box()
+        box.label(text = "Export Options:")
+        box.label(text = "Export to ccs file as version:")
+        box.prop(self, "ccs_versions", text = "")
+
+        box.label(text = "Compress on export(Gzip):")
+        box.prop(self, "gzipOnExport", text = "(Recommend only if original file was compressed)")
+
+        if self.skipExport:
+            self.removeWrongWeights = True
+
+        if self.selected_version == 0x131:
+            self.gzipOnExport = False
+
         #layout.prop(self, "export_original_bone_data")
     
+
     def execute(self, context):
         start_time = time()
 
         ccsf = readCCS(self.filepath)
 
+        if self.ccs_versions == 'FILE':
+            exportVersion = ccsf.version
+        else:
+            exportVersion = self.selected_version
+            ccsf.version = self.selected_version
+
         blender_model = context.object
-        print(f"Exporting model: {blender_model.name}")
-        print(f"Exporting model: {blender_model.parent}")
+        if blender_model.type != 'ARMATURE':
+            if blender_model.parent.type == 'ARMATURE':
+                blender_model = blender_model.parent
+            else:
+                self.report({'ERROR'}, f"Selected object {blender_model.name} is not an armature.")
+                return {"CANCELLED"}
         
         #ccsf_model = next((m for m in ccsf.sortedChunks["Model"] if m.name == blender_model.name), None)
         cmpChunk = next((m for m in ccsf.sortedChunks["Clump"] if m.name == blender_model.name), None)
         if not cmpChunk:
-            self.report({'ERROR'}, "Matching CCSF clump not found.")
+            self.report({'ERROR'}, f" Clump named {blender_model.name} not found in ccs file.")
             return {"CANCELLED"}
         else:
-            print("Found matching CCSF clump.")
+            self.report({'INFO'}, f'Found clump named {blender_model.name} in ccs file.')
 
         # Mesh
         for i, child in enumerate(blender_model.children):
@@ -106,10 +160,11 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             mdlChunk = next((m for m in ccsf.sortedChunks["Model"] if m.name == mesh_obj.name), None)
             #print(f"mdlChunk: {mdlChunk}")
             if not mdlChunk:
-                self.report({'ERROR'}, f"Matching CCSF model not found {mesh_obj.name}.")
+                self.report({'ERROR'}, f"Model named {mesh_obj.name} not found in ccs file.")
                 return {"CANCELLED"}
             else:
-                print("Found matching CCSF model.")
+                print(f"Found model named {mesh_obj.name} in ccs file.")
+                self.report({'INFO'}, f'Found model named {mesh_obj.name} in ccs file.')
 
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
@@ -129,7 +184,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             # Replace mesh data in model chunks
             if mdlChunk.modelType & ModelTypes.Deformable and not mdlChunk.modelType & ModelTypes.TrianglesList:
                 exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
-                print(f'Exported mdlChunk: {mdlChunk.name}')
+                print(f'Exported mdlChunk as DeformableMesh: {mdlChunk.name}')
 
             elif mdlChunk.modelType == ModelTypes.ShadowMesh:
                 print(f'TODO: Export ShadowMesh')
@@ -138,8 +193,8 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 print(f'TODO: Export TrianglesList')
 
             else:
-                print(f'TOFINISH: Export Rigid')
                 exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
+                print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
                 
 
         elapsed = time() - start_time
@@ -147,22 +202,37 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         print(msg)
         self.report({'INFO'}, msg)
 
-
-        if self.version_0x131:
-            exportVersion = 0x0131
-            ccsf.version = 0x0131
+        if self.skipExport == False:
+            writeCCS(f"{self.filepath}", ccsf, self.gzipOnExport, exportVersion)
+            if self.removeWrongWeights == False:
+                self.report({'INFO'}, f'Exported ccs file as version {hex(ccsf.version)}')
+            else:
+                self.report({'WARNING'}, f'Exported ccs file as version {hex(ccsf.version)} & removed incompatible vertex_groups from meshs in Blender.')
         else:
-            exportVersion = ccsf.version
-
-        writeCCS(f"{self.filepath}", ccsf, exportVersion)
-
-        print(f'Exported ccsf as version {ccsf.version}')
+            self.report({'WARNING'}, "Skipped export & removed incompatible vertex_groups from meshs in Blender.")
 
         return {'FINISHED'}
 
 
 
 def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
+
+    # Remove vertex groups not in mdlChunk.lookupList
+    if self.removeWrongWeights:
+        vertex_groups = mesh_obj.vertex_groups
+        remove_groups = []
+
+        for vg in vertex_groups:
+            bone_name = mdlChunk.name.replace("MDL_", "OBJ_")
+            if vg.name != bone_name:
+                remove_groups.append(vg)
+
+        for vg in remove_groups:
+            #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
+            vertex_groups.remove(vg)
+
+    # Show remaning vertex groups
+    #self.report({'INFO'}, f"{mdlChunk.name}: Remaining groups: {[vg.name for vg in vertex_groups]}.")
 
     next_index = 0
 
@@ -218,7 +288,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
 
             if loop_index >= len(uv_layer):
-                print(f"[UV ERROR] loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
+                self.report({'ERROR'}, f"loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
 
             mesh_v = Vertex()
             mesh_v.position = tuple(pos)
@@ -252,7 +322,22 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
         bones = [cmpChunk.bones[cmpChunk.boneIndices[i]] for i in mdlChunk.lookupList]
     else:
         bones = blender_mesh
-    print(f'bones = {bones}')
+
+    # Remove vertex groups not in mdlChunk.lookupList
+    if self.removeWrongWeights:
+        vertex_groups = mesh_obj.vertex_groups
+        remove_groups = []
+
+        for vg in vertex_groups:
+            if vg.name not in [bone.name for bone in bones]:
+                remove_groups.append(vg)
+
+        for vg in remove_groups:
+            #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
+            vertex_groups.remove(vg)
+
+    # Show remaning vertex groups
+    #self.report({'INFO'}, f"{mdlChunk.name}: Remaining groups: {[vg.name for vg in vertex_groups]}.")
 
     next_index = 0
 
@@ -320,7 +405,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
             #print(f"v_groups: {v_groups}")
 
             if len(v_groups) == 0:
-                tri_single = False
+                raise ValueError(f"Vertex {v_idx} has no bone weights assigned over 0.0")
+                #tri_single = False
                 break
 
             elif len(v_groups) != 1:
@@ -428,7 +514,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     #print(f"uv_final : {uv_final}")
 
                     if loop_index >= len(uv_layer):
-                        print(f"[UV ERROR] loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
+                        raise ValueError(f"loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
 
                     weights = None
                     bone_ids = None
@@ -489,8 +575,6 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 else:
                     b_weights = b_weights[:4]
 
-                weightCount = len(b_weights)
-                #print(f"b_weights: {b_weights}")
                 normalized_weights = normalize_weights(b_weights)
                 #print(f"normalized_weights: {normalized_weights}")
 
@@ -543,8 +627,14 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     mesh_v.multiWeight = True
 
                 mesh.vertices.append(mesh_v)
-                deformableVerticesCount += len(norm)
+                #deformableVerticesCount += len(norm)
 
+                #deformableVerticesCount = 0
+                for w in range(len(mesh_v.weights)):
+                    if mesh_v.weights[w] > 0:
+                        #print(f"len(pos): {len(norm)}")
+                        deformableVerticesCount += 1
+                        
             mesh.vertexCount = len(mesh.vertices)
             mesh.deformableVerticesCount = deformableVerticesCount 
 

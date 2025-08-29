@@ -79,7 +79,6 @@ class ccsMaterial(BrStruct):
         br.write_uint32(self.textureIndex)
         br.write_float32(self.alpha)
         if version > 0x130:
-            print(f'TODO: Export matertials for versions over 0x130')
             br.write_uint16(int(self.offsetX * 4096))
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
