@@ -80,7 +80,7 @@ class DDS(BrStruct):
                 self.texture_data = bytes(self.texture_data)
 
     def __br_write__(self, br: 'BinaryReader', dds):
-        br.write_str(dds.magic)
+        br.write_str_fixed(dds.magic, 4)
         br.write_struct(DDS_Header(), dds.header)
         if PixelFormat_Flags.values(dds.header.pixel_format.flags) == 'DDPF_FOURCC':
             if dds.header.pixel_format.fourCC == 'DX10':
@@ -182,7 +182,7 @@ class DDS_PixelFormat(BrStruct):
         br.write_uint32(dds2.size)
         br.write_uint32(dds2.flags)
         if dds2.fourCC is not None:
-            br.write_str(dds2.fourCC)
+            br.write_str_fixed(dds2.fourCC, 4)
         else:
             br.write_uint32(0)
         br.write_uint32(dds2.rgbBitCount)
