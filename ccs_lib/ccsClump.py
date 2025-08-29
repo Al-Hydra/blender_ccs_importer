@@ -33,11 +33,10 @@ class ccsClump(BrStruct):
             br.write_uint32(self.boneIndices[i])
 
         if version > 0x110:
-            print(f'TODO: Clump FIX THIS')
-            print(f'self.bones {self.bones.items()}')
+            #print(f'self.bones {self.bones.items()}')
             for i, bone in self.bones.items():
                 bone: Bone
-                print(f'self.bones.Bbone: {bone}')
+                #print(f'self.bones.Bbone: {bone}')
                 br.write_struct(bone)
         else:
             print(f'TODO: Clump version lower then 0x110')

@@ -127,7 +127,7 @@ class ccsFile(BrStruct):
             # Write chunk data
             br.write_bytes(bytes(chunk_buf.buffer()))
             chunk_end = br.pos()
-            print(f"chunk_start: {chunk_start}, chunk_end: {chunk_end}, chunk_buf.size: {chunk_buf.size()}")
+            #print(f"chunk_start: {chunk_start}, chunk_end: {chunk_end}, chunk_buf.size: {chunk_buf.size()}")
 
         # End stream file test
         br.write_uint16(CCSTypes.Stream.value) # Stream Type
