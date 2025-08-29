@@ -3,7 +3,7 @@ from bpy.types import PropertyGroup, Operator, Panel
 from bpy.props import StringProperty, BoolProperty, EnumProperty, PointerProperty, CollectionProperty, IntProperty
 from .ccs_lib.ccs import *
 from mathutils import Vector, Matrix, Euler, Quaternion
-from math import radians, tan
+from math import radians, degrees, tan
 import numpy as np
 from time import perf_counter, time
 from bpy_extras.io_utils import ExportHelper
@@ -66,10 +66,23 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
 
 
-    removeWrongWeights: BoolProperty(name = "Remove incompatible weights from meshs in Blender", default = True) #type: ignore
-    skipExport: BoolProperty(name = "Skip export and just remove incompatible weights", default = True) #type: ignore
+    removeWrongWeights: BoolProperty(
+        name = "Remove incompatible vertex_groups", 
+        default = True,
+        description = "Remove incompatible vertex_groups from meshs in Blender"
+        ) #type: ignore
+    
+    skipExport: BoolProperty(
+        name = "Skip Export", 
+        default = True,
+        description = "Skip export & just remove incompatible vertex_groups from meshs in Blender"
+        ) #type: ignore
 
-    gzipOnExport: BoolProperty(name = "Compress ccs file with Gzip on export", default = False) #type: ignore
+    gzipOnExport: BoolProperty(
+        name = "Compress on export(Gzip)", 
+        default = False,
+        description = "(Recommend only if original file was compressed)"
+        ) #type: ignore
     
     ccs_versions: bpy.props.EnumProperty(
         name="Version",
@@ -94,37 +107,35 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         }
         return version_map[self.ccs_versions]
 
-    '''
-    export_original_bone_data: bpy.props.BoolProperty(
-        name="Use Original Bone Data",
+    customBoneData: bpy.props.BoolProperty(
+        name="Use custome Bone Data",
         default=False,
-        description="Export bone data using stored matrix/rotation/scale from custom bone properties")
-    '''
+        description="Export bone data using stored matrix/rotation/scale from custom bone properties") #type: ignore
     
 
     def draw(self, context):
         layout = self.layout
 
         box = layout.box()
-        box.label(text = "Remove incompatible weights from meshs in Blender:")
-        box.prop(self, "removeWrongWeights", text = "Remove incompatible weights")
-        box.prop(self, "skipExport", text = "Skip Export (Just remove incompatible weights)")
+        box.label(text = "Remove incompatible vertex_groups from meshs in Blender:")
+        box.prop(self, "removeWrongWeights")
+        box.prop(self, "skipExport")
 
         box = layout.box()
         box.label(text = "Export Options:")
         box.label(text = "Export to ccs file as version:")
         box.prop(self, "ccs_versions", text = "")
 
-        box.label(text = "Compress on export(Gzip):")
-        box.prop(self, "gzipOnExport", text = "(Recommend only if original file was compressed)")
+        # Dosen't work as intended yet
+        #box.prop(self, "customBoneData")
+
+        box.prop(self, "gzipOnExport")
 
         if self.skipExport:
             self.removeWrongWeights = True
 
         if self.selected_version == 0x131:
             self.gzipOnExport = False
-
-        #layout.prop(self, "export_original_bone_data")
     
 
     def execute(self, context):
@@ -154,6 +165,40 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         else:
             self.report({'INFO'}, f'Found clump named {blender_model.name} in ccs file.')
 
+        # Dosen't work as intended yet
+        '''
+        # Bones
+        if self.customBoneData:             # Dosen't work as intended yet
+            for i, cmpBone in cmpChunk.bones.items():
+                #print(f"cmpBone {cmpBone}")
+                for bBone in blender_model.data.bones:
+                    if bBone.name == cmpBone.name:
+                        if bBone.parent and cmpBone.parent:
+                            parent_mtx = blender_model.data.bones[bBone.parent.name].matrix_local
+                            local_mtx = parent_mtx.inverted() @ bBone.matrix_local
+                        else:
+                            local_mtx = bBone.matrix_local
+
+                        loc, rot_quat, scale = local_mtx.decompose()
+                        rot_euler = rot_quat.to_euler("ZYX")
+                        #rot_degrees = tuple(round(degrees(a), 3) for a in rot_euler)
+                        rot_degrees = tuple(degrees(a) for a in rot_euler)
+                        
+                        print(f"cmpBone.rot {cmpBone.rot}, {cmpBone.name}")
+                        print(f"rot_degrees {rot_degrees}, {cmpBone.name}")
+
+                        if loc:
+                            cmpBone.pos = list(loc * 100)
+                        if rot_quat:
+                            cmpBone.rot = list(rot_degrees)
+                        if scale:
+                            cmpBone.scale = list(scale)
+                        
+                        # Update the transformation matrix
+                        #print(f"Updated bone {cmpBone.name} with custom properties.")
+                        break
+            '''
+
         # Mesh
         for i, child in enumerate(blender_model.children):
             mesh_obj = child
@@ -163,7 +208,6 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 self.report({'ERROR'}, f"Model named {mesh_obj.name} not found in ccs file.")
                 return {"CANCELLED"}
             else:
-                print(f"Found model named {mesh_obj.name} in ccs file.")
                 self.report({'INFO'}, f'Found model named {mesh_obj.name} in ccs file.')
 
             #print(f"mesh_obj: {mesh_obj}")
@@ -175,16 +219,18 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             #print(f"blender_mesh: {blender_mesh}")
 
             if not blender_mesh.color_attributes:
-                blender_mesh.vertex_colors.new(name='Color', type="BYTE_COLOR", domain="CORNER")
+                blender_mesh.color_attributes.new(name="Color", type="BYTE_COLOR", domain="CORNER")
             color_layer = blender_mesh.color_attributes[0].data
-            uv_layer = blender_mesh.uv_layers[0].data if blender_mesh.uv_layers else None
+            if not  blender_mesh.uv_layers:
+                blender_mesh.uv_layers.new(name="UV")
+            uv_layer = blender_mesh.uv_layers[0].data
             vertex_groups = mesh_obj.vertex_groups
 
 
             # Replace mesh data in model chunks
             if mdlChunk.modelType & ModelTypes.Deformable and not mdlChunk.modelType & ModelTypes.TrianglesList:
                 exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
-                print(f'Exported mdlChunk as DeformableMesh: {mdlChunk.name}')
+                #print(f'Exported mdlChunk as DeformableMesh: {mdlChunk.name}')
 
             elif mdlChunk.modelType == ModelTypes.ShadowMesh:
                 print(f'TODO: Export ShadowMesh')
@@ -194,7 +240,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
             else:
                 exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
-                print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
+                #print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
                 
 
         elapsed = time() - start_time
@@ -216,20 +262,25 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
 
 def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
-
-    # Remove vertex groups not in mdlChunk.lookupList
+    # Bone name for rigid mesh
+    bone_name = mdlChunk.name.replace("MDL_", "OBJ_")
+    
+    # Remove incompatible vertex groups from rigid mesh in Blender
     if self.removeWrongWeights:
         vertex_groups = mesh_obj.vertex_groups
         remove_groups = []
 
         for vg in vertex_groups:
-            bone_name = mdlChunk.name.replace("MDL_", "OBJ_")
             if vg.name != bone_name:
                 remove_groups.append(vg)
 
         for vg in remove_groups:
             #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
             vertex_groups.remove(vg)
+            
+    # Assign bone reference for mdlChunk to rigid mesh
+    if not mesh_obj.vertex_groups:
+        mesh_obj.vertex_groups.new(name=bone_name)
 
     # Show remaning vertex groups
     #self.report({'INFO'}, f"{mdlChunk.name}: Remaining groups: {[vg.name for vg in vertex_groups]}.")
@@ -241,8 +292,6 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     bm.verts.ensure_lookup_table()
 
     # Prepare Bone matrix for export
-    print(f"blender_model: {blender_model}")
-    print(f"mesh_obj: {mesh_obj}")
     mesh_matrix = mesh_obj.matrix_world # Get the world matrix of the mesh object
     armature_matrix = blender_model.matrix_world
     print(f"mesh_matrix: {mesh_matrix}, armature_matrix: {armature_matrix}")
@@ -250,7 +299,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     mesh = RigidMesh()
 
     bone_name = mesh_obj.name.replace("MDL_", "OBJ_")
-    print(f'RigidMesh bone_name: {bone_name}')
+    #print(f'RigidMesh bone_name: {bone_name}')
     # create bone matrix
     for b in blender_model.data.bones:
         if b.name == bone_name:
@@ -303,7 +352,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             mesh.vertices.append(mesh_v)
             next_index += 1
 
-    # copy parent anf material from original mesh in ccs
+    # copy parent and material from original mesh in ccs
     mesh.parentIndex = mdlChunk.meshes[0].parentIndex
     mesh.materialIndex = mdlChunk.meshes[0].materialIndex
 
@@ -321,20 +370,29 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
     if mdlChunk.lookupList != None:
         bones = [cmpChunk.bones[cmpChunk.boneIndices[i]] for i in mdlChunk.lookupList]
     else:
-        bones = blender_mesh
+        bones = [cmpChunk.bones[i] for i in self.boneIndices]
 
-    # Remove vertex groups not in mdlChunk.lookupList
+    # Get Bone names from Clump bones
+    bone_names = {bone.name for bone in bones}
+    # Get vertex_groups from mesh object
+    vertex_groups = mesh_obj.vertex_groups
+
+    # Remove incompatible vertex groups not in cmpChunk.bones &/or mdlChunk.lookupList
     if self.removeWrongWeights:
-        vertex_groups = mesh_obj.vertex_groups
         remove_groups = []
 
         for vg in vertex_groups:
-            if vg.name not in [bone.name for bone in bones]:
+            if vg.name not in bone_names:
                 remove_groups.append(vg)
 
         for vg in remove_groups:
             #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
             vertex_groups.remove(vg)
+
+    # Add missing compatible vertex groups to mesh from cmpChunk.bones &/or mdlChunk.lookupList
+    for bn in bone_names:
+        if vertex_groups.get(bn) is None:
+            mesh_obj.vertex_groups.new(name=bn)
 
     # Show remaning vertex groups
     #self.report({'INFO'}, f"{mdlChunk.name}: Remaining groups: {[vg.name for vg in vertex_groups]}.")
@@ -356,8 +414,6 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
     matList = {}  # To track materials and their corresponding CCSF material chunks
 
     # Prepare Bone matrix for export
-    print(f"blender_model: {blender_model}")
-    print(f"mesh_obj: {mesh_obj}")
     mesh_matrix = mesh_obj.matrix_world # Get the world matrix of the mesh object
     armature_matrix = blender_model.matrix_world
     print(f"mesh_matrix: {mesh_matrix}, armature_matrix: {armature_matrix}")
@@ -401,10 +457,46 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                                 break
 
                         bonelookupList_groups[group_idx] = (group_name, chunk_idx, bone_idx, bone_mtx)
+                
+            # Ensure at least one group is present for error handling
+            if len(v_groups) == 0:
+                print(f"v.groups: {v.groups}")
+                fallback_group = mesh_obj.vertex_groups[0]
+                fallback_group.add([v_idx], 1.0, 'REPLACE')  # assign full weight
+                v_groups = [type("TmpGroup", (), {"group": fallback_group.index, "weight": 1.0})()]
+                group_idx = v_groups[0].group
+                group_name = mesh_obj.vertex_groups[group_idx].name
+                print(f"v_groups: {v_groups}")
+
+                for obj in ccsf.sortedChunks["Object"]:
+                    if obj.name == group_name:
+                        chunk_idx = obj.index
+                        break
+
+                if group_idx not in bonelookupList_groups:
+                    
+                    # create bone matrix
+                    for b in blender_model.data.bones:
+                        if b.name == group_name:
+                            #print(f"ArmatureBone: {b.name}")
+                            # get bone rest matrix
+                            br_w_mtx = armature_matrix @ b.matrix_local
+                            br_w_inv = br_w_mtx.inverted()
+                            bone_mtx = br_w_inv @ mesh_matrix
+                            break
+
+                    for i , bone in enumerate(bones):
+                        if bone.name == group_name:
+                            bone_idx = i
+                            break
+
+                    bonelookupList_groups[group_idx] = (group_name, chunk_idx, bone_idx, bone_mtx)
+
 
             #print(f"v_groups: {v_groups}")
 
             if len(v_groups) == 0:
+
                 raise ValueError(f"Vertex {v_idx} has no bone weights assigned over 0.0")
                 #tri_single = False
                 break
@@ -424,6 +516,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 tri_weights_single.append(tri)
                 group_idx = group_indices[0]
                 mat_idx = tri.material_index
+                print(f"mat_idx: {mat_idx}")
 
                 if mat_idx not in tri_weights_single_mat_groups:
                     tri_weights_single_mat_groups[mat_idx] = {}
@@ -437,8 +530,19 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 if mat_idx not in matList:
                     mdl_prefix = blender_mesh.name
                     print(f"mdl_prefix: {mdl_prefix}")
-                    mat_name = blender_mesh.materials[mat_idx].name
-                    mat_name = mat_name.removeprefix(mdl_prefix + "_")
+                    print(f"blender_mesh.materials: {blender_mesh.materials}")
+                    if len(blender_mesh.materials) == 0:
+                        mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+                    else:
+                        bm_mat_name = blender_mesh.materials[mat_idx].name
+
+                        if bm_mat_name.startswith("MDL_"):
+                            mat_name = bm_mat_name.removeprefix(mdl_prefix + "_")
+                        elif bm_mat_name.startswith("MAT_"):
+                            mat_name = bm_mat_name
+                        else:
+                            mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+
                     print(f"mdl_prefix: {mdl_prefix}, mat_name: {mat_name}")
 
                     ccsf_mat = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name), None)
@@ -446,10 +550,10 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                         self.report({'ERROR'}, "Matching CCSF material not found.")
                         return {"CANCELLED"}
                     else:
-                        chunk_idx = ccsf_mat.index
+                        matChunk_idx = ccsf_mat.index
                         print("Found matching CCSF material.")
             
-                    matList[mat_idx] = (mat_name, chunk_idx)
+                    matList[mat_idx] = (mat_name, matChunk_idx)
                     print(f"matList: {matList[mat_idx]}")
             else:
                 tri_weights_multi.append(tri)
@@ -474,10 +578,16 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
             mesh = DeformableMesh()
             deformableVerticesCount = 0
+            print(f"mat_idx: {mat_idx}")
 
             for i, tri in enumerate(tri_weights_single_mat_groups[mat_idx][group_idx]):
-                mat_name = blender_mesh.materials[tri.material_index].name
-                chunk_idx = matList[tri.material_index][1]
+                if len(blender_mesh.materials) == 0:
+                    mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+                else:
+                    mat_name = blender_mesh.materials[tri.material_index].name
+
+                matChunk_idx = matList[tri.material_index][1]
+                print(f"matChunk_idx: {matChunk_idx}")
 
                 # Single trianle flags layout
                 # Read from end
@@ -536,7 +646,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
                 mesh.vertexCount = len(mesh.vertices)
 
-            mesh.materialIndex = chunk_idx
+            mesh.materialIndex = matChunk_idx
             meshes.append(mesh)
 
 
@@ -546,6 +656,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
         deformableVerticesCount = 0
         
         for i, tri in enumerate(tri_weights_multi_mat[mat_idx]):
+            matChunk_idx = matList[tri.material_index][1]
 
             # Single trianle flags layout
             # Read from end
@@ -577,6 +688,16 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
                 normalized_weights = normalize_weights(b_weights)
                 #print(f"normalized_weights: {normalized_weights}")
+                
+                weightCount = 0 
+
+                '''#deformableVerticesCount = 0
+                for w in range(len(mesh_v.weights)):
+                    if mesh_v.weights[w] > 0.0:
+                        print(f"mesh_v.weights[{w}] = {mesh_v.weights[w]}")
+                        weightCount += 1
+                        #print(f"len(pos): {len(norm)}")
+                        deformableVerticesCount += 1'''
 
                 bone_mtx = []
                 bone_mtx_3x3 = []
@@ -623,22 +744,23 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 mesh_v.triangleFlags = triFlag
                 mesh_v.multiWeight = False
                 #print(f"len(pos): {len(norm)}")
-                if len(pos) > 1:
+
+                weightCount = 0
+                for w in range(len(mesh_v.weights)):
+                    if mesh_v.weights[w] > 0.0:
+                        weightCount += 1
+                        deformableVerticesCount += 1
+
+                if weightCount > 1:
                     mesh_v.multiWeight = True
 
                 mesh.vertices.append(mesh_v)
                 #deformableVerticesCount += len(norm)
-
-                #deformableVerticesCount = 0
-                for w in range(len(mesh_v.weights)):
-                    if mesh_v.weights[w] > 0:
-                        #print(f"len(pos): {len(norm)}")
-                        deformableVerticesCount += 1
                         
             mesh.vertexCount = len(mesh.vertices)
             mesh.deformableVerticesCount = deformableVerticesCount 
 
-        mesh.materialIndex = chunk_idx
+        mesh.materialIndex = matChunk_idx
         meshes.append(mesh)
 
 
@@ -655,7 +777,7 @@ def normalize_weights(b_weights):
     weights = [w for w in b_weights if w[1] is not None]
     total = sum(w[3] for w in weights)
 
-    if total > 0:
+    if total > 0.0:
         # Normalize weights
         normalized_weights = [(w[0], w[1], w[2], w[3] / total) for w in weights]
     #print(f"normalized_weights: {normalized_weights}")

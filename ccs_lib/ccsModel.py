@@ -152,7 +152,7 @@ class RigidMesh(BrStruct):
             if tanBinFlag:
                 print(f'TODO: Export meshes mesh tan & Bin')
 
-        print(f'RigidMesh version {version} posCount {posCount} normCount {normCount} colCount {colCount} uvCount {uvCount}')
+        #print(f'RigidMesh version {version} posCount {posCount} normCount {normCount} colCount {colCount} uvCount {uvCount}')
 
         br.write_bytes(bytes(vpBuffer.buffer()))
         # br.align_pos(4)
@@ -500,7 +500,7 @@ class DeformableMesh(BrStruct):
                     posCount += 1
                     b_weights = 0
                     for w in range(len(self.vertices[v].weights)):
-                        if self.vertices[v].weights[w] > 0:
+                        if self.vertices[v].weights[w] > 0.0:
                             b_weights += 1
 
                     v_pos = self.vertices[v].positions[0]
@@ -508,11 +508,16 @@ class DeformableMesh(BrStruct):
                     vpBuffer.write_int16(int(v_pos[1] / finalScale))
                     vpBuffer.write_int16(int(v_pos[2] / finalScale))
                     boneID = self.vertices[v].boneIDs[0]
-                    weight = self.vertices[v].weights[0]
+                    if b_weights == 1:
+                        weight = 1.0
+                    else:
+                        weight = self.vertices[v].weights[0]
+
                     #vertParams = (boneID << 10) | int(weight * 256) | (1 << 9)
                     vertParams = (boneID << 10) | int(weight * 256)
                     #print(f'vertParams: {vertParams}')
                     if self.vertices[v].multiWeight:
+                    #if b_weights > 1:
                         vertParams &= ~(1 << 9)
                     else:
                         vertParams |= (1 << 9)
@@ -521,6 +526,7 @@ class DeformableMesh(BrStruct):
                     vpBuffer.write_uint16(vertParams)
 
                     if self.vertices[v].multiWeight:
+                    #if b_weights > 1:
                         v_pos = self.vertices[v].positions[1]
                         vpBuffer.write_int16(int(v_pos[0] / finalScale))
                         vpBuffer.write_int16(int(v_pos[1] / finalScale))
@@ -553,7 +559,7 @@ class DeformableMesh(BrStruct):
                         if self.vertices[v].weights[w] > 0:
                             b_weights += 1
                     
-                    print(f'vertex {v} active weights: {b_weights}')
+                    #print(f'vertex {v} active weights: {b_weights}')
                     #for i in range(len(self.vertices[v].positions)):
                     for i in range(b_weights):
                         v_pos = self.vertices[v].positions[i]
@@ -604,7 +610,7 @@ class DeformableMesh(BrStruct):
                 br.write_bytes(bytes(vtBuffer.buffer()))
                 br.write_bytes(bytes(vbnBuffer.buffer()))
 
-            print(f'DeformableMesh version {version} posCount {posCount} normCount {normCount} uvCount {uvCount}')
+            #print(f'DeformableMesh version {version} posCount {posCount} normCount {normCount} uvCount {uvCount}')
 
 
     def finalize(self, chunks):

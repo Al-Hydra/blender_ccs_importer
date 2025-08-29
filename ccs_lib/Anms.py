@@ -126,7 +126,7 @@ def anmChunkWriter(self, br: BinaryReader, version):
                 br.write_uint32(ocBuffer.size() // 4)
                 # write buffer to chunk
                 br.write_bytes(bytes(ocBuffer.buffer()))
-                print(f"objController: objectController: {objController}")
+                #print(f"objController: objectController: {objController}")
 
             # material Controllers
             for matController in self.materialControllers:
