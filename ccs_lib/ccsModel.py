@@ -367,14 +367,14 @@ class DeformableMesh(BrStruct):
                 # vn: nx, ny, nz, flag (all int8) -> 4 bytes
                 vn_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
 
+                # --- UVs: 16.16 fixed-point in int32 ---
+                uv_raw = np.frombuffer(br.read_bytes(self.vertexCount * 8), dtype='i4').reshape(-1, 2)
+
                 # optional: tangents / bitangents (assumed int8[4] same as normals)
                 vt_raw = vbn_raw = None
                 if tanBinFlag:
                     vt_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
                     vbn_raw = np.frombuffer(br.read_bytes(self.deformableVerticesCount * 4), dtype='i1').reshape(-1, 4)
-
-                # --- UVs: 16.16 fixed-point in int32 ---
-                uv_raw = np.frombuffer(br.read_bytes(self.vertexCount * 8), dtype='i4').reshape(-1, 2)
 
                 # --- outputs: 4 slots per vertex ---
                 positions = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
