@@ -83,6 +83,12 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         default = False,
         description = "(Recommend only if original file was compressed)"
         ) #type: ignore
+
+    tangentSpace: BoolProperty(
+        name = "Compress on export(Gzip)", 
+        default = False,
+        description = "Include Tangents & Bitangents in export (CCS version 0x131 only)"
+        ) #type: ignore
     
     ccs_versions: bpy.props.EnumProperty(
         name="Version",
@@ -126,6 +132,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         box.label(text = "Export to ccs file as version:")
         box.prop(self, "ccs_versions", text = "")
 
+
         # Dosen't work as intended yet
         #box.prop(self, "customBoneData")
 
@@ -136,6 +143,10 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
         if self.selected_version == 0x131:
             self.gzipOnExport = False
+            box.prop(self, "tangentSpace", text = "Export Tangents & Bitangents") # TEST
+        if self.selected_version != 0x131:
+            self.tangentSpace = False
+        
     
 
     def execute(self, context):
@@ -213,9 +224,13 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
             blender_mesh.calc_loop_triangles()
-            if mdlChunk.tangentBinormalsFlag:
+            if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion == 0x131:
+                mdlChunk.tangentBinormalsFlag = True
                 print(f'TODO: Export Tangents & Binormals')
                 blender_mesh.calc_tangents()
+            else:
+                mdlChunk.tangentBinormalsFlag = False
+
             #print(f"blender_mesh: {blender_mesh}")
 
             if not blender_mesh.color_attributes:
@@ -341,9 +356,9 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
 
             mesh_v = Vertex()
             mesh_v.position = tuple(pos)
-            mesh_v.normal = tuple(norm)
-            #mesh_v.tangents = tuple(tang)
-            #mesh_v.binormals = tuple(bi)
+            mesh_v.normals = tuple(norm)
+            mesh_v.tangents = tuple(tang)
+            mesh_v.bitangents = tuple(bi)
             mesh_v.color = col
             mesh_v.UV = uv
             #mesh_v.triangleFlags = 0
@@ -526,7 +541,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
                 tri_weights_single_mat_groups[mat_idx][group_idx].append(tri)
 
-                # Create refrance list for materials and their corresponding CCSF material chunks
+                # Create reference list for materials and their corresponding CCSF material chunks
                 if mat_idx not in matList:
                     mdl_prefix = blender_mesh.name
                     print(f"mdl_prefix: {mdl_prefix}")
@@ -614,8 +629,13 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     # prepare position, normal, tangent, bitangent
                     pos = bone_mtx @ v.co
                     norm = (bone_mtx_3x3 @ loop.normal).normalized()
+                    #tang = (bone_mtx_3x3.inverted() @ loop.tangent).normalized()
+                    #bi = (bone_mtx_3x3.inverted() @ loop.bitangent).normalized()
                     tang = (bone_mtx_3x3 @ loop.tangent).normalized()
-                    bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
+                    #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
+                    lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                    #lBit = loop.normal.cross(loop.tangent)
+                    bi = (bone_mtx_3x3 @ lBit).normalized()
                     triFlag = flags[l]
                     uv = uv_layer[loop_index].uv
                     col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -633,7 +653,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     mesh_v.positions = [tuple(pos), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
                     mesh_v.normals = [tuple(norm), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
                     mesh_v.tangents = [tuple(tang), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
-                    mesh_v.binormals = [tuple(bi), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+                    mesh_v.bitangents = [tuple(bi), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
                     mesh_v.weights = [1,0,0,0]
                     mesh_v.UV = uv
                     mesh_v.boneIDs = [bone_idx,0,0,0] # Bone bone_idx
@@ -725,6 +745,9 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     norm.append(tuple((bone_mtx_3x3[m] @ loop.normal).normalized()))
                     tang.append(tuple((bone_mtx_3x3[m] @ loop.tangent).normalized()))
                     bi.append(tuple((bone_mtx_3x3[m] @ loop.bitangent).normalized()))
+                    lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                    #lBit = loop.normal.cross(loop.tangent)
+                    bi.append(tuple((bone_mtx_3x3[m] @ lBit).normalized()))
 
                 uv = uv_layer[loop_index].uv
                 col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -736,7 +759,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 #print(f" mesh_v.positions: { mesh_v.positions}")
                 mesh_v.normals = norm
                 mesh_v.tangents = tang
-                mesh_v.binormals = bi
+                mesh_v.bitangents = bi
                 mesh_v.weights = [weights[0],weights[1],weights[2],weights[3]]
                 mesh_v.UV = uv
                 mesh_v.boneIDs = [boneIDs[0],boneIDs[1],boneIDs[2],boneIDs[3]] # Bone index

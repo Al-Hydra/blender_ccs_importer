@@ -28,7 +28,8 @@ class ccsObject(BrStruct):
         br.write_uint32(self.parentIndex)
         br.write_uint32(self.modelIndex)
         br.write_uint32(self.shadowIndex)
-        br.write_uint32(self.extraIndex)
+        if version > 0x120:
+            br.write_uint32(self.extraIndex)
     
     def finalize(self, chunks):
         self.parent = chunks.get(self.parentIndex)
