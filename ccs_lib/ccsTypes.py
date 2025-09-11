@@ -76,7 +76,7 @@ ccsDict = {
     0x0100: "ccsObject",
     0x0101: "objectFrame",
     0x0102: "objectController",
-    0x0108: "",
+    0x0108: "noteFrame",
     0x0200: "ccsMaterial",
     0x0201: "",
     0x0202: "materialController",

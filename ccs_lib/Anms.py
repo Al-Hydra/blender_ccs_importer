@@ -68,6 +68,10 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         ambient_f = br.read_struct(ambientFrame, None, current_frame)
         self.lights['Ambient'][current_frame] = ambient_f.color
 
+    def read_note_frame():
+        note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
+        print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
+
     # Dispatch table
     chunk_handlers = {
         CCSTypes.Frame: read_frame,
@@ -81,6 +85,8 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         CCSTypes.PCMFrame: read_pcm_frame,
         CCSTypes.DistantLightFrame: read_distant_light_frame,
         CCSTypes.AmbientFrame: read_ambient_frame,
+        # Not fully understood, Included for CCS file rewriting support
+        CCSTypes.NoteFrame: read_note_frame,
     }
 
     # Main loop
@@ -126,7 +132,7 @@ def anmChunkWriter(self, br: BinaryReader, version):
                 br.write_uint32(ocBuffer.size() // 4)
                 # write buffer to chunk
                 br.write_bytes(bytes(ocBuffer.buffer()))
-                print(f"objController: objectController: {objController}")
+                #print(f"objController: objectController: {objController}")
 
             # material Controllers
             for matController in self.materialControllers:
@@ -464,6 +470,28 @@ class ambientFrame(BrStruct):
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.color = br.read_uint8(4)
         self.frame = currentFrame
+
+
+class noteFrame(BrStruct):
+    def __init__(self):
+        self.frame = 0
+        self.object = None
+        self.name = ""
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.objectIndex = br.read_uint32()
+        self.name = indexTable.Names[self.objectIndex][0]
+        self.unk1 = br.read_uint32()
+        self.unk2 = br.read_uint32()
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.objectIndex)
+        br.write_uint32(self.unk1)
+        br.write_uint32(self.unk2)
+
+    def finalize(self, chunks):
+        self.object = chunks[self.objectIndex]
+
 
 
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
