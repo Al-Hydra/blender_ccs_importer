@@ -23,6 +23,7 @@ class RigidMesh(BrStruct):
         self.parentIndex = br.read_uint32()
         self.materialIndex = br.read_uint32()
         self.vertexCount = br.read_uint32()
+        #print(f'VertexCount = {self.vertexCount}')
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
@@ -109,6 +110,7 @@ class RigidMesh(BrStruct):
 
         posCount = 0
         normCount = 0
+        tanCount = 0
         colCount = 0
         uvCount = 0
         vpBuffer = BinaryReader(encoding='cp932')
@@ -126,7 +128,7 @@ class RigidMesh(BrStruct):
             vpBuffer.write_int16(round(v_pos[2] / finalScale))
 
             normCount += 1
-            v_norm = self.vertices[v].normal
+            v_norm = self.vertices[v].normals
             vnBuffer.write_int8(int(v_norm[0] * 64))
             vnBuffer.write_int8(int(v_norm[1] * 64))
             vnBuffer.write_int8(int(v_norm[2] * 64))
@@ -151,6 +153,18 @@ class RigidMesh(BrStruct):
 
             if tanBinFlag:
                 print(f'TODO: Export meshes mesh tan & Bin')
+                tanCount += 1
+                v_tan = self.vertices[v].tangents
+                vtBuffer.write_int8(int(v_tan[0] * 64))
+                vtBuffer.write_int8(int(v_tan[1] * 64))
+                vtBuffer.write_int8(int(v_tan[2] * 64))
+                vtBuffer.write_int8(0) # tangent_sign
+
+                v_bin = self.vertices[v].bitangents
+                vbnBuffer.write_int8(int(v_bin[0] * 64))
+                vbnBuffer.write_int8(int(v_bin[1] * 64))
+                vbnBuffer.write_int8(int(v_bin[2] * 64))
+                vbnBuffer.write_int8(0) # bitangent_sign
 
         #print(f'RigidMesh version {version} posCount {posCount} normCount {normCount} colCount {colCount} uvCount {uvCount}')
 
@@ -225,9 +239,9 @@ class DeformableMesh(BrStruct):
     def __br_read__(self, br: BinaryReader, vertexScale=256, version = 0x100, tanBinFlag = 0):
         self.materialIndex = br.read_uint32()
         self.vertexCount = br.read_uint32() #This is the number of vertices that are actually used
-        #print(f'VertexCount = {self.VertexCount}')
+        #print(f'VertexCount = {self.vertexCount}')
         self.deformableVerticesCount = br.read_uint32() 
-        #print(f'TotalVertexCount = {self.TotalVertexCount}')
+        #print(f'TotalVertexCount = {self.deformableVerticesCount}')
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
 
@@ -457,9 +471,9 @@ class DeformableMesh(BrStruct):
 
             for v in range(self.vertexCount):
                 v_pos = self.vertices[v].positions[0]
-                br.write_int16(int(v_pos[0] / finalScale))
-                br.write_int16(int(v_pos[1] / finalScale))
-                br.write_int16(int(v_pos[2] / finalScale))
+                br.write_int16(round(v_pos[0] / finalScale))
+                br.write_int16(round(v_pos[1] / finalScale))
+                br.write_int16(round(v_pos[2] / finalScale))
 
             # br.align_pos(4)
             br.align(4)
@@ -483,6 +497,19 @@ class DeformableMesh(BrStruct):
             
             if tanBinFlag:
                 print(f'TODO: Export meshes mesh tan & Bin')
+                for v in range(self.vertexCount):
+                    v_tan = self.vertices[v].tangents[0]
+                    br.write_int8(int(v_tan[0] * 64))
+                    br.write_int8(int(v_tan[1] * 64))
+                    br.write_int8(int(v_tan[2] * 64))
+                    br.write_int8(0) # tangent_sign
+
+                for v in range(self.vertexCount):
+                    v_bin = self.vertices[v].bitangents[0]
+                    br.write_int8(int(v_bin[0] * 64))
+                    br.write_int8(int(v_bin[1] * 64))
+                    br.write_int8(int(v_bin[2] * 64))
+                    br.write_int8(0) # bitangent_sign
 
 
         else: #multiple weights vertices
@@ -564,9 +591,9 @@ class DeformableMesh(BrStruct):
                     for i in range(b_weights):
                         v_pos = self.vertices[v].positions[i]
                         #print(f'self.vertex: {v} posCount {len(self.vertices[v].positions)}')
-                        vpBuffer.write_int16(int(v_pos[0] / finalScale))
-                        vpBuffer.write_int16(int(v_pos[1] / finalScale))
-                        vpBuffer.write_int16(int(v_pos[2] / finalScale))
+                        vpBuffer.write_int16(round(v_pos[0] / finalScale))
+                        vpBuffer.write_int16(round(v_pos[1] / finalScale))
+                        vpBuffer.write_int16(round(v_pos[2] / finalScale))
                         vpBuffer.write_int16(int(self.vertices[v].weights[i] * 256))
 
                         # set stopBit to 0 if this is not the last weight for this vertex
@@ -592,7 +619,7 @@ class DeformableMesh(BrStruct):
                             vtBuffer.write_int8(int(v_tan[2] * 64))
                             vtBuffer.write_int8(0)
 
-                            v_bin = self.vertices[v].tangents[i]
+                            v_bin = self.vertices[v].bitangents[i]
                             vbnBuffer.write_int8(int(v_bin[0] * 64))
                             vbnBuffer.write_int8(int(v_bin[1] * 64))
                             vbnBuffer.write_int8(int(v_bin[2] * 64))
@@ -857,6 +884,7 @@ class DeformableVertex:
         self.positions = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
         self.normals = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
         self.tangents = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+        self.bitangents = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
         self.weights = [0, 0, 0, 0]
         self.UV = [0, 0]
         self.boneIDs = [0, 0, 0, 0]

@@ -1043,7 +1043,7 @@ class importCCS:
             normals_out.append(n_world.normalized())
 
             # vertex groups / weights (write only non-zero)
-            # map bone indices (into `bones`) -> group indices via names
+            # map bone indices (into `bones`) -> group indices via name
             if ws[0] != 0.0:
                 gi = bone_indices[bones[ids[0]].name]
                 v[vgroup_layer][gi] = ws[0]
