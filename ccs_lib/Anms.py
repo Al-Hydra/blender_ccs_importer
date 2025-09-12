@@ -85,7 +85,8 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         CCSTypes.PCMFrame: read_pcm_frame,
         CCSTypes.DistantLightFrame: read_distant_light_frame,
         CCSTypes.AmbientFrame: read_ambient_frame,
-        # Not fully understood, Included for CCS file rewriting support
+        # Not fully understood, but seen in some files
+        # Included for CCS file rewriting support
         CCSTypes.NoteFrame: read_note_frame,
     }
 
