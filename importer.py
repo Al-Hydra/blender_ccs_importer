@@ -856,7 +856,7 @@ class importCCS:
                                 normals_out, uv_layer, color_layer, vgroup_layer, vCount):
         pos0 = mesh_np.vertices["positions"]   # (V,3)
         nrm0 = mesh_np.vertices["normals"]  # (V,3)
-        flags = mesh_np.vertices["triangleFlag"]        # (V,)
+        flags = mesh_np.vertices["triangleFlags"]        # (V,)
         uvs   = mesh_np.vertices.get("UV", None)        # (V,2) or None
         cols  = mesh_np.vertices.get("color", None)     # (V,4) u8 or None
 
@@ -890,7 +890,7 @@ class importCCS:
                 direction = -1
                 continue
 
-            # f == 0 → emit triangle
+            # f == 0 ? emit triangle
             if i >= 2:
                 idxs = (i-2, i-1, i) if direction == 1 else (i, i-1, i-2)
                 try:
