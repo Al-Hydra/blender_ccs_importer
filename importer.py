@@ -1753,8 +1753,8 @@ class importCCS:
                 offsetsY[i] = [frame.offsetY + offsetY_value]
                 opacity_dict[i] = [frame.opacity]
                         
-            self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
-            self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
+            self.insertMaterialFrames(material_action.fcurves, group_name, data_path, offsetsX, 0)
+            self.insertMaterialFrames(material_action.fcurves, group_name, data_path, offsetsY, 1)
 
 
     def makeEffCamera(self):
