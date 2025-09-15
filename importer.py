@@ -1428,6 +1428,7 @@ class importCCS:
             locations = {}
             rotations = {}
             scales = {}
+            visibility = {}
             
             startQuat = brot
             for frame, locrotscaleop in anim.objects[obj].items():
@@ -1452,6 +1453,11 @@ class importCCS:
                 scales[frame] = scale_factor
                 
                 opacity_dict[frame] = [opacity]
+                if opacity < 0.01:
+                    visibility[frame] = [1]
+                else:
+                    visibility[frame] = [0]
+
             
             
             data_path = f'{bone_path}.{"location"}'
@@ -1465,6 +1471,9 @@ class importCCS:
 
             
             self.insertFrames(opacity_fcurves, group_name, opacity_datapath, opacity_dict, 1, "CONSTANT")
+            
+            if target_model:
+                self.insertFrames(opacity_fcurves, target_model.name, "hide_viewport", visibility, 1, "CONSTANT")
 
 
         if self.import_morphs:
