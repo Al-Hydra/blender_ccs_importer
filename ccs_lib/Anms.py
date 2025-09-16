@@ -537,6 +537,7 @@ class omniLightController(BrStruct):
 
     def finalize(self, chunks):
         self.lightObject = chunks[self.lightIndex]
+        print(f"omniLightController: {self.lightObject.name}, index: {self.lightIndex}")
 
 '''class omniLightFrame(BrStruct):
     def __init__(self):
