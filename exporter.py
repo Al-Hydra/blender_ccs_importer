@@ -224,7 +224,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
             blender_mesh.calc_loop_triangles()
-
+            
             if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion == 0x131:
                 mdlChunk.tangentBinormalsFlag = True
                 print(f'TODO: Export Tangents & Binormals')
@@ -875,10 +875,6 @@ def visualize_tangents(mesh):
             0.5 + 0.5 * v.y,
             0.5 + 0.5 * v.z,
             1.0
-            #v.x,
-            #v.y,
-            #v.z,
-            #1.0
         )
 
     # Write normals to color layer
