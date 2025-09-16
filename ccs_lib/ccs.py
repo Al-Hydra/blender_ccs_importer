@@ -86,7 +86,9 @@ class ccsFile(BrStruct):
 
             self.originalChunks.append(chunkData)
             index += 1
-
+        else:
+            print(f"Unknown chunk type {chunkType} at {hex(br.pos())}")
+            
         #read stream section
         self.stream = br.read_struct(ccsStream, None, self.name, self.chunks, self.indexTable, self.version)
 

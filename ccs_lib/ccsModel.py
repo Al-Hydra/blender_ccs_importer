@@ -37,7 +37,7 @@ class RigidMesh(BrStruct):
         # Normals + per-vertex flag: 3 * int8 + int8
         n_i8 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
         normals0      = n_i8[:, :3].astype(np.float32) / np.float32(64.0)
-        triangleFlag  = n_i8[:, 3].astype(np.int8, copy=False)
+        triangleFlags  = n_i8[:, 3].astype(np.int8, copy=False)
 
         # Allocate 4-slot containers
         positions = np.zeros((self.vertexCount, 3), dtype=np.float32)
@@ -91,7 +91,7 @@ class RigidMesh(BrStruct):
             "normals":       normals,        # (V,4,3) slot0 filled
             "boneIDs":       boneIDs,        # (V,4)   slot0=parentIndex
             "weights":       weights,        # (V,4)   slot0=1
-            "triangleFlag":  triangleFlag,   # (V,)
+            "triangleFlags":  triangleFlags,   # (V,)
             "color":         color,          # (V,4) uint8 or None
             "UV":            UV,             # (V,2) float32 or None
             "tangents":        tangents,        # (V,4,3) or None
@@ -101,7 +101,7 @@ class RigidMesh(BrStruct):
         }
 
 
-    def __br_write__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x110, tanBinFlag = 0):
+    def __br_write__(self, br: BinaryReader, vertexScale=64, modelFlags=0, version = 0x120, tanBinFlag = 0):
         br.write_uint32(self.parentIndex)
         br.write_uint32(self.materialIndex)
         br.write_uint32(self.vertexCount)
@@ -119,24 +119,29 @@ class RigidMesh(BrStruct):
         uvBuffer = BinaryReader(encoding='cp932')
         vtBuffer = BinaryReader(encoding='cp932')
         vbnBuffer = BinaryReader(encoding='cp932')
-        
+
         for v in range(self.vertexCount):
+            print(f"self.vertexCount: {self.vertexCount}")
             posCount += 1
-            v_pos = self.vertices[v].position
+            #v_pos = self.vertices[v].position
+            v_pos = get_position(self, v)
             vpBuffer.write_int16(round(v_pos[0] / finalScale))
             vpBuffer.write_int16(round(v_pos[1] / finalScale))
             vpBuffer.write_int16(round(v_pos[2] / finalScale))
 
             normCount += 1
-            v_norm = self.vertices[v].normals
+            #v_norm = self.vertices[v].normals
+            v_norm = get_normal(self, v)
             vnBuffer.write_int8(int(v_norm[0] * 64))
             vnBuffer.write_int8(int(v_norm[1] * 64))
             vnBuffer.write_int8(int(v_norm[2] * 64))
-            vnBuffer.write_int8(self.vertices[v].triangleFlags)
+            #vnBuffer.write_int8(self.vertices[v].triangleFlags)
+            vnBuffer.write_int8(get_triangleFlag(self, v))
 
             if ((modelFlags & 2) == 0):
                 colCount += 1
-                v_col = self.vertices[v].color
+                #v_col = self.vertices[v].color
+                v_col = get_color(self, v)
                 vcBuffer.write_uint8(round(v_col[0] / 2))
                 vcBuffer.write_uint8(round(v_col[1] / 2))
                 vcBuffer.write_uint8(round(v_col[2] / 2))
@@ -144,23 +149,26 @@ class RigidMesh(BrStruct):
 
             if ((modelFlags & 4) == 0):
                 uvCount += 1
+                v_UV = get_UV(self, v)
                 if version >= 0x125:
-                    uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
-                    uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
+                    uvBuffer.write_int32(int(v_UV[0] * 65536))
+                    uvBuffer.write_int32(int(v_UV[1] * 65536))
                 else:
-                    uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
-                    uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
+                    uvBuffer.write_int16(int(v_UV[0] * 256))
+                    uvBuffer.write_int16(int(v_UV[1] * 256))
 
             if tanBinFlag:
-                print(f'TODO: Export meshes mesh tan & Bin')
+                #print(f'TODO: Export meshes mesh tan & Bin')
                 tanCount += 1
-                v_tan = self.vertices[v].tangents
+                #v_tan = self.vertices[v].tangents
+                v_tan = get_tangent(self, v)
                 vtBuffer.write_int8(int(v_tan[0] * 64))
                 vtBuffer.write_int8(int(v_tan[1] * 64))
                 vtBuffer.write_int8(int(v_tan[2] * 64))
                 vtBuffer.write_int8(0) # tangent_sign
 
-                v_bin = self.vertices[v].bitangents
+                #v_bin = self.vertices[v].bitangents
+                v_bin = get_bitangent(self, v)
                 vbnBuffer.write_int8(int(v_bin[0] * 64))
                 vbnBuffer.write_int8(int(v_bin[1] * 64))
                 vbnBuffer.write_int8(int(v_bin[2] * 64))
@@ -467,10 +475,12 @@ class DeformableMesh(BrStruct):
 
         #Single weight vertices
         if not self.deformableVerticesCount:
-            br.write_uint32(self.vertices[0].boneIDs[0])
+            #br.write_uint32(self.vertices[0].boneIDs[0])
+            br.write_uint32(get_boneID(self, 0))
 
             for v in range(self.vertexCount):
-                v_pos = self.vertices[v].positions[0]
+                #v_pos = self.vertices[v].positions[0]
+                v_pos = get_positions(self, v, 0)
                 br.write_int16(round(v_pos[0] / finalScale))
                 br.write_int16(round(v_pos[1] / finalScale))
                 br.write_int16(round(v_pos[2] / finalScale))
@@ -479,11 +489,13 @@ class DeformableMesh(BrStruct):
             br.align(4)
 
             for v in range(self.vertexCount):
-                v_norm = self.vertices[v].normals[0]
+                #v_norm = self.vertices[v].normals[0]
+                v_norm = get_normals(self, v, 0)
                 br.write_int8(int(v_norm[0] * 64))
                 br.write_int8(int(v_norm[1] * 64))
                 br.write_int8(int(v_norm[2] * 64))
-                br.write_int8(self.vertices[v].triangleFlags)
+                #br.write_int8(self.vertices[v].triangleFlags)
+                br.write_int8(get_triangleFlag(self, v))
 
             if version > 0x125:
                 for v in self.vertices:
@@ -491,21 +503,24 @@ class DeformableMesh(BrStruct):
                     br.write_int32(int(v.UV[1] * 65536))
 
             else:
-                for v in self.vertices:
-                    br.write_int16(int(v.UV[0] * 256))
-                    br.write_int16(int(v.UV[1] * 256))
+                for v in range(self.vertexCount):
+                #for v in self.vertices:
+                    v_UV = get_UV(self, v)
+                    br.write_int16(int(v_UV[0] * 256))
+                    br.write_int16(int(v_UV[1] * 256))
             
             if tanBinFlag:
-                print(f'TODO: Export meshes mesh tan & Bin')
                 for v in range(self.vertexCount):
-                    v_tan = self.vertices[v].tangents[0]
+                    #v_tan = self.vertices[v].tangents[0]
+                    v_tan = get_tangents(self, v, 0)
                     br.write_int8(int(v_tan[0] * 64))
                     br.write_int8(int(v_tan[1] * 64))
                     br.write_int8(int(v_tan[2] * 64))
                     br.write_int8(0) # tangent_sign
 
                 for v in range(self.vertexCount):
-                    v_bin = self.vertices[v].bitangents[0]
+                    #v_bin = self.vertices[v].bitangents[0]
+                    v_bin = get_bitangents(self, v, 0)
                     br.write_int8(int(v_bin[0] * 64))
                     br.write_int8(int(v_bin[1] * 64))
                     br.write_int8(int(v_bin[2] * 64))
@@ -526,25 +541,30 @@ class DeformableMesh(BrStruct):
                 for v in range(self.vertexCount):
                     posCount += 1
                     b_weights = 0
-                    for w in range(len(self.vertices[v].weights)):
-                        if self.vertices[v].weights[w] > 0.0:
+                    #for w in range(len(self.vertices[v].weights)):
+                    for w in range(len(get_weights(self, v))):
+                        #if self.vertices[v].weights[w] > 0.0:
+                        if get_weight(self, v, w) > 0.0:
                             b_weights += 1
 
-                    v_pos = self.vertices[v].positions[0]
-                    vpBuffer.write_int16(int(v_pos[0] / finalScale))
-                    vpBuffer.write_int16(int(v_pos[1] / finalScale))
-                    vpBuffer.write_int16(int(v_pos[2] / finalScale))
-                    boneID = self.vertices[v].boneIDs[0]
+                    #v_pos = self.vertices[v].positions[0]
+                    v_pos = get_positions(self, v, 0)
+                    vpBuffer.write_int16(round(v_pos[0] / finalScale))
+                    vpBuffer.write_int16(round(v_pos[1] / finalScale))
+                    vpBuffer.write_int16(round(v_pos[2] / finalScale))
+                    #boneID = self.vertices[v].boneIDs[0]
+                    boneID = get_boneID(self, v)
                     if b_weights == 1:
                         weight = 1.0
                     else:
-                        weight = self.vertices[v].weights[0]
+                        #weight = self.vertices[v].weights[0]
+                        weight = get_weight(self, v)
 
                     #vertParams = (boneID << 10) | int(weight * 256) | (1 << 9)
                     vertParams = (boneID << 10) | int(weight * 256)
                     #print(f'vertParams: {vertParams}')
-                    if self.vertices[v].multiWeight:
-                    #if b_weights > 1:
+                    #if self.vertices[v].multiWeight:
+                    if b_weights > 1:
                         vertParams &= ~(1 << 9)
                     else:
                         vertParams |= (1 << 9)
@@ -552,14 +572,17 @@ class DeformableMesh(BrStruct):
                     #print(f'vertParams: {vertParams}')
                     vpBuffer.write_uint16(vertParams)
 
-                    if self.vertices[v].multiWeight:
-                    #if b_weights > 1:
-                        v_pos = self.vertices[v].positions[1]
-                        vpBuffer.write_int16(int(v_pos[0] / finalScale))
-                        vpBuffer.write_int16(int(v_pos[1] / finalScale))
-                        vpBuffer.write_int16(int(v_pos[2] / finalScale))
-                        boneID = self.vertices[v].boneIDs[1]
-                        weight = self.vertices[v].weights[1]
+                    #if self.vertices[v].multiWeight:
+                    if b_weights > 1:
+                        #v_pos = self.vertices[v].positions[1]
+                        v_pos = get_positions(self, v, 1)
+                        vpBuffer.write_int16(round(v_pos[0] / finalScale))
+                        vpBuffer.write_int16(round(v_pos[1] / finalScale))
+                        vpBuffer.write_int16(round(v_pos[2] / finalScale))
+                        #boneID = self.vertices[v].boneIDs[1]
+                        boneID = get_boneID(self, v, 1)
+                        #weight = self.vertices[v].weights[1]
+                        weight = get_weight(self, v, 1)
                         secondParams = (boneID << 10) | int(weight * 256)
                         #print(f'vertParams: {secondParams}')
                         secondParams |= (1 << 9)
@@ -567,34 +590,42 @@ class DeformableMesh(BrStruct):
                     #print(f"v.position: {posCount} weights {len(self.vertices[v].positions)} {len(bytes(vpBuffer.buffer()))}")
                     
                     for i in range(b_weights):
-                        v_norm = self.vertices[v].normals[0]
+                        #v_norm = self.vertices[v].normals[0]
+                        v_norm = get_normals(self, v, 0)
                         normCount += 1
                         vnBuffer.write_int8(int(v_norm[0] * 64))
                         vnBuffer.write_int8(int(v_norm[1] * 64))
                         vnBuffer.write_int8(int(v_norm[2] * 64))
-                        vnBuffer.write_int8(self.vertices[v].triangleFlags)
+                        #vnBuffer.write_int8(self.vertices[v].triangleFlags)
+                        vnBuffer.write_int8(get_triangleFlag(self, v))
                     
-                    uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
-                    uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
+                    #uvBuffer.write_int16(int(self.vertices[v].UV[0] * 256))
+                    #uvBuffer.write_int16(int(self.vertices[v].UV[1] * 256))
+                    v_UV = get_UV(self, v)
+                    uvBuffer.write_int16(int(v_UV[0] * 256))
+                    uvBuffer.write_int16(int(v_UV[1] * 256))
                     uvCount += 1
 
             else:
                 for v in range(self.vertexCount):
                     posCount += 1
                     b_weights = 0
-                    for w in range(len(self.vertices[v].weights)):
-                        if self.vertices[v].weights[w] > 0:
+                    #for w in range(len(self.vertices[v].weights)):
+                    for w in range(len(get_weights(self, v))):
+                        #if self.vertices[v].weights[w] > 0:
+                        if get_weight(self, v, w) > 0:
                             b_weights += 1
                     
                     #print(f'vertex {v} active weights: {b_weights}')
                     #for i in range(len(self.vertices[v].positions)):
                     for i in range(b_weights):
-                        v_pos = self.vertices[v].positions[i]
-                        #print(f'self.vertex: {v} posCount {len(self.vertices[v].positions)}')
+                        #v_pos = self.vertices[v].positions[i]
+                        v_pos = get_positions(self, v, i)
                         vpBuffer.write_int16(round(v_pos[0] / finalScale))
                         vpBuffer.write_int16(round(v_pos[1] / finalScale))
                         vpBuffer.write_int16(round(v_pos[2] / finalScale))
-                        vpBuffer.write_int16(int(self.vertices[v].weights[i] * 256))
+                        #vpBuffer.write_int16(int(self.vertices[v].weights[i] * 256))
+                        vpBuffer.write_int16(int(get_weight(self, v, i) * 256))
 
                         # set stopBit to 0 if this is not the last weight for this vertex
                         #if i != len(self.vertices[v].positions) - 1:
@@ -603,31 +634,39 @@ class DeformableMesh(BrStruct):
                         else:
                             vpBuffer.write_int16(1)
 
-                        vpBuffer.write_int16(self.vertices[v].boneIDs[i])
+                        #vpBuffer.write_int16(self.vertices[v].boneIDs[i])
+                        vpBuffer.write_int16(get_boneID(self, v, i))
 
                         normCount += 1
-                        v_norm = self.vertices[v].normals[i]
+                        #v_norm = self.vertices[v].normals[i]
+                        v_norm = get_normals(self, v, i)
                         vnBuffer.write_int8(int(v_norm[0] * 64))
                         vnBuffer.write_int8(int(v_norm[1] * 64))
                         vnBuffer.write_int8(int(v_norm[2] * 64))
-                        vnBuffer.write_int8(self.vertices[v].triangleFlags)
+                        #vnBuffer.write_int8(self.vertices[v].triangleFlags)
+                        vnBuffer.write_int8(get_triangleFlag(self, v))
 
                         if tanBinFlag:
-                            v_tan = self.vertices[v].tangents[i]
+                            #v_tan = self.vertices[v].tangents[i]
+                            v_tan = get_tangents(self, v, i)
                             vtBuffer.write_int8(int(v_tan[0] * 64))
                             vtBuffer.write_int8(int(v_tan[1] * 64))
                             vtBuffer.write_int8(int(v_tan[2] * 64))
                             vtBuffer.write_int8(0)
 
-                            v_bin = self.vertices[v].bitangents[i]
+                            #v_bin = self.vertices[v].bitangents[i]
+                            v_bin = get_bitangents(self, v, i)
                             vbnBuffer.write_int8(int(v_bin[0] * 64))
                             vbnBuffer.write_int8(int(v_bin[1] * 64))
                             vbnBuffer.write_int8(int(v_bin[2] * 64))
                             vbnBuffer.write_int8(0)
 
                     
-                    uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
-                    uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
+                    #uvBuffer.write_int32(int(self.vertices[v].UV[0] * 65536))
+                    #uvBuffer.write_int32(int(self.vertices[v].UV[1] * 65536))
+                    v_UV = get_UV(self, v)
+                    uvBuffer.write_int32(int(v_UV[0] * 65536))
+                    uvBuffer.write_int32(int(v_UV[1] * 65536))
                     uvCount += 1
 
             br.write_bytes(bytes(vpBuffer.buffer()))
@@ -836,7 +875,7 @@ class ccsModel(BrStruct):
         if self.meshCount > 0:
 
             if self.modelType & ModelTypes.Deformable and not self.modelType & ModelTypes.TrianglesList:
-                print(f'Write chunk index: {self.index} name: {self.name}')
+                print(f'Write chunk index: {self.index} name: {self.name} DeformableMesh')
                 for mesh in self.meshes:
                     mesh: DeformableMesh
                     br.write_struct(mesh, self.vertexScale, version, self.tangentBinormalsFlag)
@@ -850,6 +889,7 @@ class ccsModel(BrStruct):
                 print(f'TODO: Export meshes model type TrianglesList')
 
             else:
+                print(f'Write chunk index: {self.index} name: {self.name} RigidMesh')
                 self.meshes: RigidMesh
                 br.write_struct(self.meshes, self.vertexScale, self.modelFlags, version, self.tangentBinormalsFlag)
 
@@ -876,7 +916,7 @@ class Vertex(BrStruct):
 
         self.color = c
         self.UV = (uv[0] / 256, (uv[1] / 256))
-        self.triangleFlag = flag
+        self.triangleFlags = flag
 
 
 class DeformableVertex:    
@@ -890,3 +930,96 @@ class DeformableVertex:
         self.boneIDs = [0, 0, 0, 0]
         self.triangleFlags = 0
         self.multiWeight = False
+
+
+
+def get_position(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["positions"][v]
+    else:
+        return self.vertices[v].positions
+    
+def get_positions(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["positions"][v][slot]
+    else:
+        return self.vertices[v].positions[slot]
+
+
+def get_normal(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["normals"][v]
+    else:
+        return self.vertices[v].normals
+
+def get_normals(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["normals"][v][slot]
+    else:
+        return self.vertices[v].normals[slot]
+
+
+def get_tangent(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["tangents"][v]
+    else:
+        return self.vertices[v].tangents
+
+def get_tangents(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["tangents"][v][slot]
+    else:
+        return self.vertices[v].tangents[slot]
+    
+
+def get_bitangent(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["bitangents"][v]
+    else:
+        return self.vertices[v].bitangents
+    
+def get_bitangents(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["bitangents"][v][slot]
+    else:
+        return self.vertices[v].bitangents[slot]
+    
+
+def get_triangleFlag(self, v):
+    if isinstance(self.vertices, dict):
+        return self.vertices["triangleFlags"][v]
+    else:
+        return self.vertices[v].triangleFlags
+
+def get_UV(self, v):
+    if isinstance(self.vertices, dict):
+        return self.vertices["UV"][v]
+    else:
+        return self.vertices[v].UV
+
+
+def get_weight(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["weights"][v][slot]
+    else:
+        return self.vertices[v].weights[slot]
+
+def get_weights(self, v):
+    if isinstance(self.vertices, dict):
+        return self.vertices["weights"][v]
+    else:
+        return self.vertices[v].weights
+
+
+def get_boneID(self, v, slot=0):
+    if isinstance(self.vertices, dict):
+        return self.vertices["boneIDs"][v][slot]
+    else:
+        return self.vertices[v].boneIDs[slot]
+
+
+def get_color(self, v):
+    if isinstance(self.vertices, dict):
+        return self.vertices["color"][v]
+    else:
+        return self.vertices[v].color

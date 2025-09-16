@@ -224,10 +224,12 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             #print(f"mesh_obj: {mesh_obj}")
             blender_mesh = mesh_obj.data
             blender_mesh.calc_loop_triangles()
+            
             if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion == 0x131:
                 mdlChunk.tangentBinormalsFlag = True
                 print(f'TODO: Export Tangents & Binormals')
                 blender_mesh.calc_tangents()
+                visualize_tangents(blender_mesh) # Create tangent visualization
             else:
                 mdlChunk.tangentBinormalsFlag = False
 
@@ -254,6 +256,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 print(f'TODO: Export TrianglesList')
 
             else:
+                print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
                 exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
                 #print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
                 
@@ -346,7 +349,9 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             pos = bone_mtx @ v.co
             norm = (bone_mtx_3x3 @ loop.normal).normalized()
             tang = (bone_mtx_3x3 @ loop.tangent).normalized()
-            bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
+            #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
+            lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+            bi = (bone_mtx_3x3 @ lBit).normalized()
             triFlag = flags[l]
             uv = uv_layer[loop_index].uv
             col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -355,7 +360,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
                 self.report({'ERROR'}, f"loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
 
             mesh_v = Vertex()
-            mesh_v.position = tuple(pos)
+            mesh_v.positions = tuple(pos)
             mesh_v.normals = tuple(norm)
             mesh_v.tangents = tuple(tang)
             mesh_v.bitangents = tuple(bi)
@@ -634,7 +639,6 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     tang = (bone_mtx_3x3 @ loop.tangent).normalized()
                     #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
                     lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-                    #lBit = loop.normal.cross(loop.tangent)
                     bi = (bone_mtx_3x3 @ lBit).normalized()
                     triFlag = flags[l]
                     uv = uv_layer[loop_index].uv
@@ -744,9 +748,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     pos.append(tuple(bone_mtx @ v.co))
                     norm.append(tuple((bone_mtx_3x3[m] @ loop.normal).normalized()))
                     tang.append(tuple((bone_mtx_3x3[m] @ loop.tangent).normalized()))
-                    bi.append(tuple((bone_mtx_3x3[m] @ loop.bitangent).normalized()))
+                    #bi.append(tuple((bone_mtx_3x3[m] @ loop.bitangent).normalized()))
                     lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-                    #lBit = loop.normal.cross(loop.tangent)
                     bi.append(tuple((bone_mtx_3x3[m] @ lBit).normalized()))
 
                 uv = uv_layer[loop_index].uv
@@ -818,3 +821,78 @@ def normalize_weights(b_weights):
 def menu_func_export(self, context):
     self.layout.operator(CCS_IMPORTER_OT_EXPORT.bl_idname,
                         text='CyberConnect Streaming File (.ccs)')
+
+
+
+
+
+
+def visualize_tangents(mesh):
+    normal_layer_name="Normals"
+    tangent_layer_name="Tangents"
+    bitangent_layer_name="Bitangents"
+
+    if not mesh.uv_layers:
+        raise Exception("Mesh has no UVs")
+
+    # Ensure tangents are calculated
+    mesh.calc_tangents()
+
+    # Create or reuse color attribute
+    if normal_layer_name in mesh.color_attributes:
+        norm_col_layer = mesh.color_attributes[normal_layer_name]
+    else:
+        norm_col_layer = mesh.color_attributes.new(
+            name=normal_layer_name,
+            type="BYTE_COLOR",
+            domain="CORNER"
+        )
+
+    # Create or reuse color attribute
+    if tangent_layer_name in mesh.color_attributes:
+        tan_col_layer = mesh.color_attributes[tangent_layer_name]
+    else:
+        tan_col_layer = mesh.color_attributes.new(
+            name=tangent_layer_name,
+            type="BYTE_COLOR",
+            domain="CORNER"
+        )
+
+    # Create or reuse color attribute
+    if bitangent_layer_name in mesh.color_attributes:
+        bit_col_layer = mesh.color_attributes[bitangent_layer_name]
+    else:
+        bit_col_layer = mesh.color_attributes.new(
+            name=bitangent_layer_name,
+            type="BYTE_COLOR",
+            domain="CORNER"
+        )
+
+    # Normalize helper (map -1..1 → 0..1)
+    def vec_to_rgb(v):
+        return (
+            0.5 + 0.5 * v.x,
+            0.5 + 0.5 * v.y,
+            0.5 + 0.5 * v.z,
+            1.0
+        )
+
+    # Write normals to color layer
+    for i, loop in enumerate(mesh.loops):
+        normal = loop.normal.normalized()
+        norm_col_layer.data[i].color = vec_to_rgb(normal)
+
+    # Write tangents to color layer
+    for i, loop in enumerate(mesh.loops):
+        tangent = loop.tangent.normalized()
+        tan_col_layer.data[i].color = vec_to_rgb(tangent)
+
+    # Write bitangents to color layer
+    for i, loop in enumerate(mesh.loops):
+        bitangent = loop.bitangent.normalized()
+        lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+        #bit_col_layer.data[i].color = vec_to_rgb(bitangent)
+        bit_col_layer.data[i].color = vec_to_rgb(lBit.normalized())
+
+    mesh.update()
+    print(f"Tangent visualization written to vertex colors: {tangent_layer_name}")

@@ -16,7 +16,12 @@ class ccsLight(BrStruct):
 
         self.lightType = lightType(br.read_uint32() & 0xFF)
 
-    
+
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.index)
+        br.write_uint32(self.lightType.value)
+
+
     def finalize(self, chunks):
         pass
 
