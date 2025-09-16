@@ -26,7 +26,59 @@ import bpy
 
 from .importer import *
 from .exporter import *
+from bpy.props import (BoolProperty, CollectionProperty, FloatProperty, PointerProperty,
+                       FloatVectorProperty, IntProperty, StringProperty, EnumProperty)
+class CCS_UL_SceneMaterials(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        if item.material:
+            row.label(text=item.material.name, icon='MATERIAL')
+        else:
+            row.label(text=item.name)
+        row.prop(item, 'material',emboss= True, text='', icon='MATERIAL')
 
+
+class CCS_SceneMaterial_OT_Add(bpy.types.Operator):
+    bl_idname = 'xfbin_mat.shader_add'
+    bl_label = 'Add Shader'
+
+    def execute(self, context):
+        scene = context.scene
+        manager = scene.ccs_manager
+
+        new_mat = manager.ccs_materials.add()
+
+        return {'FINISHED'}
+
+class CCS_SceneMaterial_OT_Remove(bpy.types.Operator):
+    bl_idname = 'xfbin_mat.shader_remove'
+    bl_label = 'Remove Shader'
+
+    def execute(self, context):
+        scene = context.scene
+        manager = scene.ccs_manager
+        manager.ccs_materials.remove(manager.ccs_material_index)
+        if manager.ccs_material_index > 0:
+            manager.ccs_material_index -= 1
+
+        return {'FINISHED'}
+    
+class CCSSceneMaterialPropertyGroup(PropertyGroup):
+    def update_name(self, context):
+        if self.material:
+            self.name = self.material.name
+        else:
+            self.name = 'Material'
+    name: StringProperty(name='Name', default='Material')
+    
+    material: PointerProperty(
+        type= bpy.types.Material,
+        name='Material',
+        update= update_name
+    )
+    
+    uvOffset0: FloatVectorProperty(name='UV Offset', size=2, default=(0.0, 0.0))
+    uvScale0: FloatVectorProperty(name='UV Scale', size=2, default=(1.0, 1.0))
 
 class ccsSceneManager(bpy.types.PropertyGroup):
     lightdir_object: bpy.props.PointerProperty(type=bpy.types.Object)
@@ -48,6 +100,15 @@ class ccsSceneManager(bpy.types.PropertyGroup):
     fog_end: bpy.props.FloatProperty(name='Fog End',default=10000.0,subtype='NONE',)
     
     fog_density: bpy.props.FloatProperty(name='Fog Density',default=0.0,min=0.0,max=100.0,subtype='PERCENTAGE')
+    
+    ccs_materials : CollectionProperty(
+        type=CCSSceneMaterialPropertyGroup,
+        name='XFBIN Materials',
+    )
+    
+    ccs_material_index: IntProperty(
+        name='XFBIN Material Index',
+    )
     
     
 class ccsCreateDirLight(bpy.types.Operator):
@@ -119,6 +180,24 @@ class ccsSceneManagerPanel(bpy.types.Panel):
         
         box = layout.box()
         box.label(text="CCS Scene Manager")
+        
+        box = layout.box()
+        row = box.row()
+        row.label(text='Scene Materials:')
+        
+        row = box.row()
+        # list
+        row.template_list("CCS_UL_SceneMaterials", "", manager, "ccs_materials", manager, "ccs_material_index")
+        col = row.column(align=True)
+        col.operator("ccs_mat.shader_add", icon='ADD', text="")
+        col.operator("ccs_mat.shader_remove", icon='REMOVE', text="")
+        
+        
+        row = box.row()
+        if manager.ccs_materials and manager.ccs_material_index >= 0:
+            matprop: CCSSceneMaterialPropertyGroup = manager.ccs_materials[manager.ccs_material_index]
+            row.prop(matprop, 'uvOffset0', text='UV0 Offset')
+            row.prop(matprop, 'uvScale0', text='UV0 Scale')
         
         box = layout.box()
         box.label(text="Directional Light")
@@ -208,6 +287,10 @@ class ccsMaterialPanel(bpy.types.Panel):
 def register():
     bpy.utils.register_class(ccsMaterialProperties)
     bpy.types.Material.ccs_material = bpy.props.PointerProperty(type=ccsMaterialProperties)
+    bpy.utils.register_class(CCS_UL_SceneMaterials)
+    bpy.utils.register_class(CCS_SceneMaterial_OT_Add)
+    bpy.utils.register_class(CCS_SceneMaterial_OT_Remove)
+    bpy.utils.register_class(CCSSceneMaterialPropertyGroup)
     bpy.utils.register_class(ccsMaterialPanel)
     bpy.utils.register_class(ccsSceneManager)
     bpy.utils.register_class(ccsCreateDirLight)
@@ -230,6 +313,10 @@ def unregister():
     bpy.utils.unregister_class(ccsMaterialProperties)
     bpy.utils.unregister_class(ccsMaterialPanel)
     del bpy.types.Material.ccs_material
+    bpy.utils.unregister_class(CCS_UL_SceneMaterials)
+    bpy.utils.unregister_class(CCS_SceneMaterial_OT_Add)
+    bpy.utils.unregister_class(CCS_SceneMaterial_OT_Remove)
+    bpy.utils.unregister_class(CCSSceneMaterialPropertyGroup)
     bpy.utils.unregister_class(ccsSceneManager)
     bpy.utils.unregister_class(ccsCreateDirLight)
     bpy.utils.unregister_class(ccsCreatePointLight)

@@ -584,14 +584,14 @@ class importCCS:
         bm.faces.ensure_lookup_table()
         bm.to_mesh(blender_mesh)
 
-        obj["emissive"] = 0
-        obj["invert_colors"] = 0
-        obj["opacity"] = 1
+        obj["emissive"] = 0.0
+        obj["invert_colors"] = 0.0
+        obj["opacity"] = 1.0
         if model.matFlags1 & 1:
-            obj["emissive"] = 1
+            obj["emissive"] = 1.0
         elif model.matFlags1 & 2:
-            obj["emissive"] = 1
-            obj["invert_colors"] = 1
+            obj["emissive"] = 1.0
+            obj["invert_colors"] = 1.0
             
         mat = self.makeMaterial(model, model.mesh)
         if obj["emissive"]:
@@ -636,14 +636,14 @@ class importCCS:
             #Create the object and its mesh data
             meshdata = bpy.data.meshes.new(f'{model_name}')
             obj = bpy.data.objects.new(f'{model_name}', meshdata)
-            obj["emissive"] = 0
-            obj["invert_colors"] = 0
-            obj["opacity"] = 1
+            obj["emissive"] = 0.0
+            obj["invert_colors"] = 0.0
+            obj["opacity"] = 1.0
             if model.matFlags1 & 1:
-                obj["emissive"] = 1
+                obj["emissive"] = 1.0
             elif model.matFlags1 & 2:
-                obj["emissive"] = 1
-                obj["invert_colors"] = 1
+                obj["emissive"] = 1.0
+                obj["invert_colors"] = 1.0
             
             #find the armature and add all the bones to a dict
             armature = bpy.data.objects.get(clump.name)
@@ -694,14 +694,14 @@ class importCCS:
                 for mesh in model.meshes:
                     meshdata = bpy.data.meshes.new(f'{model_name}')
                     obj = bpy.data.objects.new(f'{model_name}', meshdata)
-                    obj["emissive"] = 0
-                    obj["invert_colors"] = 0
-                    obj["opacity"] = 1
+                    obj["emissive"] = 0.0
+                    obj["invert_colors"] = 0.0
+                    obj["opacity"] = 1.0
                     if model.matFlags1 & 1:
-                        obj["emissive"] = 1
+                        obj["emissive"] = 1.0
                     elif model.matFlags1 & 2:
-                        obj["emissive"] = 1
-                        obj["invert_colors"] = 1
+                        obj["emissive"] = 1.0
+                        obj["invert_colors"] = 1.0
 
                     bone_indices = {}
                     parent_clump = bpy.data.objects.get(clump.name)
@@ -737,14 +737,14 @@ class importCCS:
                 #Create the object and its mesh data
                 meshdata = bpy.data.meshes.new(f'{model_name}')
                 obj = bpy.data.objects.new(f'{model_name}', meshdata)
-                obj["emissive"] = 0
-                obj["invert_colors"] = 0
-                obj["opacity"] = 1
+                obj["emissive"] = 0.0
+                obj["invert_colors"] = 0.0
+                obj["opacity"] = 1.0
                 if model.matFlags1 & 1:
-                    obj["emissive"] = 1
+                    obj["emissive"] = 1.0
                 elif model.matFlags1 & 2:
-                    obj["emissive"] = 1
-                    obj["invert_colors"] = 1
+                    obj["emissive"] = 1.0
+                    obj["invert_colors"] = 1.0
                 
                 #find the armature and add all the bones to a dict
                 if hasattr(clump, "name"):
@@ -1190,8 +1190,18 @@ class importCCS:
     def makeAction(self, anim):
         action = bpy.data.actions.new(anim.name)
         
-        scene_action = bpy.data.actions.new(f"{anim.name}_CCS_Scene")
+        #create a layer
+        action.layers.new(name="AnimLayer")
+        #create a strip
+        action.layers[0].strips.new(type="KEYFRAME")
+        #create a channelbag
+        action.slots.new(id_type='SCENE', name="CCS_Scene")
+        #apply the anim to the scene
+        bpy.context.scene.animation_data_create()
+        bpy.context.scene.animation_data.action = action
         
+        
+                
         #set fps to 30
         bpy.context.scene.render.fps = 30
 
@@ -1232,7 +1242,21 @@ class importCCS:
     
                 armatureObj.animation_data_create()
                 armatureObj.animation_data.action = action
-                posebone = armatureObj.pose.bones.get(target_bone)
+                
+                #create a new action slot with the armature name
+                #check if a slot already exists
+                try:
+                    slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
+                except:
+                    slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=armatureObj.name)
+                    
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+
+                    posebone = armatureObj.pose.bones.get(target_bone)
     
                 if not posebone:
                     continue
@@ -1260,26 +1284,27 @@ class importCCS:
                         group_name = action.groups.new(name = new_bone_name).name
                 
                 bone_path = f'pose.bones["{group_name}"]'
+
                 
                 locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
                 data_path = f'{bone_path}.{"location"}'
-                self.insertFrames(action, group_name, data_path, locations, 3)
+                self.insertFrames(fcurves, group_name, data_path, locations, 3)
                 
                 #Rotations Euler
                 rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
                 data_path = f'{bone_path}.{"rotation_quaternion"}'
-                self.insertFrames(action, group_name, data_path, rotations, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
                 
                 #Rotations Quaternion
                 rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
                 
                 data_path = f'{bone_path}.{"rotation_quaternion"}'
-                self.insertFrames(action, group_name, data_path, rotations_quat, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)
         
                 scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
                 data_path = f'{bone_path}.{"scale"}'
-                self.insertFrames(action, group_name, data_path, scales, 3)
-            
+                self.insertFrames(fcurves, group_name, data_path, scales, 3)
+
             if self.import_effects and ccsAnmObj.type == "Effect":
                 effect = bpy.data.objects[f'{ccsAnmObj.model.name}']
                 #effect["original_coords"] = [(1, 2, 3), (w, x, y, z), (1, 1, 1)]
@@ -1352,24 +1377,59 @@ class importCCS:
 
             armatureObj.animation_data_create()
             armatureObj.animation_data.action = action
+            
+            #check if a slot already exists
+            try:
+                slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
+            except:
+                slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=armatureObj.name)
+                
+            channelbag = action.layers[0].strips[0].channelbag(slot)
+            if channelbag:
+                fcurves = channelbag.fcurves
+            else:
+                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
 
             posebone = armatureObj.pose.bones.get(target_bone)
             if not posebone:
                 continue
+            
+            group_name = action.groups.new(name = posebone.name).name
+
+            bone_path = f'pose.bones["{group_name}"]'
+            
+            #attempt to apply the animation to a model that matches a bone name
+            target_model = bpy.data.objects.get(obj.replace('OBJ_', 'MDL_'))
+            opacity_fcurves = fcurves
+            opacity_dict = {}
+            opacity_datapath = f'{bone_path}.{"opacity"}'
+            if target_model:                
+                target_model.animation_data_create()
+                target_model.animation_data.action = action
+                
+                #create a new slot for the model
+                model_slot = target_model.animation_data.action.slots.new(id_type='OBJECT', name=target_model.name)
+                target_model.animation_data.action_slot = model_slot
+                #get the fcurves for the model slot
+                channelbag = action.layers[0].strips[0].channelbag(model_slot)
+                if channelbag:
+                    opacity_fcurves = channelbag.fcurves
+                    opacity_datapath = f'["opacity"]'
+                else:
+                    opacity_fcurves = action.layers[0].strips[0].channelbags.new(model_slot).fcurves
+                    opacity_datapath = f'["opacity"]'
+                
 
             bone = armatureObj.data.bones.get(posebone.name)
             bloc = Vector(bone["original_coords"][0]) * 0.01
             brot = Quaternion(bone["rotation_quat"]).inverted()
             bscale = Vector(bone["original_coords"][2])
 
-            group_name = action.groups.new(name = posebone.name).name
-
-            bone_path = f'pose.bones["{group_name}"]'
-
             locations = {}
             rotations = {}
             scales = {}
-            opacity_dict = {}
+            visibility = {}
+            
             startQuat = brot
             for frame, locrotscaleop in anim.objects[obj].items():
                 loc, rot, scale, opacity = locrotscaleop
@@ -1393,21 +1453,29 @@ class importCCS:
                 scales[frame] = scale_factor
                 
                 opacity_dict[frame] = [opacity]
-                
+                if opacity < 0.01:
+                    visibility[frame] = [1]
+                else:
+                    visibility[frame] = [0]
+
+            
+            
             data_path = f'{bone_path}.{"location"}'
-            self.insertFrames(action, group_name, data_path, locations, 3)
+            self.insertFrames(fcurves, group_name, data_path, locations, 3)
 
             data_path = f'{bone_path}.{"rotation_quaternion"}'
-            self.insertFrames(action, group_name, data_path, rotations, 4)
-            
+            self.insertFrames(fcurves, group_name, data_path, rotations, 4)
+
             data_path = f'{bone_path}.{"scale"}'
-            self.insertFrames(action, group_name, data_path, scales, 3)
+            self.insertFrames(fcurves, group_name, data_path, scales, 3)
+
             
-            data_path = f'{bone_path}.{"opacity"}'
-            self.insertFrames(action, group_name, data_path, opacity_dict, 1)            
+            self.insertFrames(opacity_fcurves, group_name, opacity_datapath, opacity_dict, 1, "CONSTANT")
             
-        
-        
+            if target_model:
+                self.insertFrames(opacity_fcurves, target_model.name, "hide_viewport", visibility, 1, "CONSTANT")
+
+
         if self.import_morphs:
             for morphF in anim.morphs:
                 morphF: morphFrame
@@ -1424,6 +1492,8 @@ class importCCS:
                     
                     sourceModelBlender.animation_data_create()
                     sourceModelBlender.animation_data.action = action
+                    
+                    fcurves = action.fcurves
                     
                     for target in anim.morphs[morphF].keys():
                         #check if the source model has a shape key for this target
@@ -1444,7 +1514,7 @@ class importCCS:
                                 
                                 morph_values = {f: [1 - anim.morphs[morphF][target][f][0]] for f in anim.morphs[morphF][target].keys()}
                                 
-                                self.insertFrames(action, targetShapeKey.name, data_path, morph_values, 1)
+                                self.insertFrames(fcurves, targetShapeKey.name, data_path, morph_values, 1)
                     #except:
                     #    print(f"Error at {targetShapeKey.name}")
 
@@ -1457,11 +1527,22 @@ class importCCS:
 
             if cameraObject:
                 #create a separate action for each camera
-                camera_action = bpy.data.actions.new(f"{anim.name} ({cam})")
+                #camera_action = bpy.data.actions.new(f"{anim.name} ({cam})")
+                camera_action = action
                 #apply the animation on the camera
                 cameraObject.animation_data_create()
                 cameraObject.animation_data.action = camera_action
 
+                #create a camera slot
+                slot = cameraObject.animation_data.action.slots.new(id_type='OBJECT', name=cameraObject.name)
+                cameraObject.animation_data.action_slot = slot
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+            
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                
                 locations = {}
                 rotations = {}
                 fovs = {}
@@ -1472,44 +1553,50 @@ class importCCS:
                     fovs[frame] = [cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))]
 
                 data_path = f'{"location"}'
-                self.insertFrames(camera_action, group_name, data_path, locations, 3)
+                self.insertFrames(fcurves, group_name, data_path, locations, 3)
                 
                 data_path = f'{"rotation_euler"}'
-                self.insertFrames(camera_action, group_name, data_path, rotations, 3)
-                
+                self.insertFrames(fcurves, group_name, data_path, rotations, 3)
+
                 data_path = f'{"data.lens"}'
-                self.insertFrames(camera_action, group_name, data_path, fovs, 1)
-        
+                self.insertFrames(fcurves, group_name, data_path, fovs, 1)
+
         for light in anim.lights.keys():
             if light == "Ambient":
                 ambient = anim.lights[light]
                 scene_manager = bpy.context.scene.ccs_manager
                 
-                group_name = scene_action.groups.new(name = f"Ambient").name
+                #group_name = scene_action.groups.new(name = f"Ambient").name
                 
                 ambient_color = {}
                 for frame, values in ambient.items():
                     ambient_color[frame] = [c / 255 for c in values]
                     
                 data_path = f'{"ccs_manager.ambient_color"}'
-                self.insertFrames(scene_action, group_name, data_path, ambient_color, 4)
-                
-                
+                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, ambient_color, 4)
+
+
             lightObject = self.collection.objects.get(light)
 
             group_name = action.groups.new(name = light).name
 
             if lightObject:
                 #create a separate action for each light
-                light_action = bpy.data.actions.new(f"{anim.name} ({light})")
+                light_action = action
                 #apply the animation on the light
                 lightObject.animation_data_create()
                 lightObject.animation_data.action = light_action
+                #create a light slot
+                slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+                lightObject.animation_data.action_slot = slot
+
                 
-                #create a scene manager action
-                light_scene_manager_action = scene_action
-                bpy.context.scene.animation_data_create()
-                bpy.context.scene.animation_data.action = light_scene_manager_action
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+            
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
                 
 
                 locations = {}
@@ -1523,13 +1610,13 @@ class importCCS:
                     color[frame] = [c / 255 for c in col]
 
                 data_path = f'{"rotation_euler"}'
-                self.insertFrames(light_action, group_name, data_path, rotations, 3)
-                
+                self.insertFrames(fcurves, group_name, data_path, rotations, 3)
+            
                 data_path = f'{"ccs_manager.lightdir_intensity"}'
-                self.insertFrames(light_scene_manager_action, group_name, data_path, energy, 1)
+                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, energy, 1)
                 
                 data_path = f'{"ccs_manager.lightdir_color"}'
-                self.insertFrames(light_scene_manager_action, group_name, data_path, color, 4)
+                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
@@ -1537,9 +1624,25 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
-                material_action = bpy.data.actions.new(f"{action.name} ({mat.name})")
+                material_action = action #bpy.data.actions.new(f"{action.name} ({mat.name})")
                 blender_mat.animation_data_create()
                 blender_mat.animation_data.action = material_action
+                
+                #create a material slot
+                
+                #check if a slot already exists
+                try:
+                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
+                except:
+                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
+                
+                blender_mat.animation_data.action_slot = slot
+                    
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
                 
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
@@ -1552,13 +1655,13 @@ class importCCS:
                 scalesY = {f: [1 + scaleY_value - v] for f, v in mat.scaleY.items()}
                 
                 data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
+                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
                 data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
+                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
                 data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
                 data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
 
         
         for mat in anim.materials.keys():
@@ -1567,9 +1670,23 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
-                material_action = bpy.data.actions.new(f"{action.name} ({mat})")
+                material_action = action
                 blender_mat.animation_data_create()
                 blender_mat.animation_data.action = material_action
+                
+                #check if a slot already exists
+                try:
+                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
+                except:
+                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
+                
+                blender_mat.animation_data.action_slot = slot
+
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
                 
                 
                 offsetX_value = blender_mat["uvOffset"][0]
@@ -1597,10 +1714,10 @@ class importCCS:
                     else:
                         scalesY[frame] = [1 + values[3] - scaleY_value]
                         
-                self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
-                self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
-                self.insertMaterialFrames(material_action, group_name, data_path, scalesX, 2)
-                self.insertMaterialFrames(material_action, group_name, data_path, scalesY, 3)
+                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
+                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
 
 
 
@@ -1636,8 +1753,8 @@ class importCCS:
                 offsetsY[i] = [frame.offsetY + offsetY_value]
                 opacity_dict[i] = [frame.opacity]
                         
-            self.insertMaterialFrames(material_action, group_name, data_path, offsetsX, 0)
-            self.insertMaterialFrames(material_action, group_name, data_path, offsetsY, 1)
+            self.insertMaterialFrames(material_action.fcurves, group_name, data_path, offsetsX, 0)
+            self.insertMaterialFrames(material_action.fcurves, group_name, data_path, offsetsY, 1)
 
 
     def makeEffCamera(self):
@@ -1724,19 +1841,21 @@ class importCCS:
         return scales
 
 
-    def insertFrames(self, action, group_name, data_path, values, values_count):
+    def insertFrames(self, fcurves, group_name, data_path, values, values_count, interpolation='LINEAR'):
         if len(values):
             for i in range(values_count):
-                fc = action.fcurves.new(data_path=data_path, index=i, action_group=group_name)
+                fc = fcurves.new(data_path=data_path, index=i)
                 fc.keyframe_points.add(len(values.keys()))
                 fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), values.keys(), values.values())) for x in co])
+                for kp in fc.keyframe_points:
+                    kp.interpolation = interpolation
 
                 fc.update()
-    
-    
-    def insertMaterialFrames(self, action, group_name, data_path, values, index):
+
+
+    def insertMaterialFrames(self, fcurves, group_name, data_path, values, index):
         if len(values):
-            fc = action.fcurves.new(data_path=data_path, index=index, action_group=group_name)
+            fc = fcurves.new(data_path=data_path, index=index)
             fc.keyframe_points.add(len(values.keys()))
             fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[0]), values.keys(), values.values())) for x in co])
 
