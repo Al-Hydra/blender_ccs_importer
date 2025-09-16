@@ -12,6 +12,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.objectControllers = []
     self.morphControllers = []
     self.materialControllers = []
+    self.omniLightControllers = []
     self.pcmFrames = {}
     self.lights = defaultdict(dict)
     self.animationLoops = False
@@ -87,6 +88,8 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         CCSTypes.AmbientFrame: read_ambient_frame,
         # Not fully understood, but seen in some files
         # Included for CCS file rewriting support
+        CCSTypes.OmniLightController: read_omni_light_Controller,
+        CCSTypes.OmniLightFrame: read_omni_light_frame,
         CCSTypes.NoteFrame: read_note_frame,
     }
 
@@ -228,6 +231,14 @@ class cameraController(BrStruct):
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.FOV = readFloat(br, self.FOV, self.ctrlFlags, currentFrame)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.cameraIndex)
+        br.write_uint32(self.ctrlFlags)
+        writeVector(br, self.positions, self.ctrlFlags, currentFrame)
+        writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
+        writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
+        writeFloat(br, self.FOV, self.ctrlFlags, currentFrame)
 
     def finalize(self, chunks):
         self.camera = chunks[self.cameraIndex]
@@ -494,6 +505,55 @@ class noteFrame(BrStruct):
         self.object = chunks[self.objectIndex]
 
 
+class omniLightController(BrStruct):
+    def __init__(self):
+        self.lightObject = None
+        self.vec3f = (0, 0, 0)
+        self.color = (0, 0, 0, 255)
+        self.floatF0 = {}
+        self.floatF1 = {}
+        self.floatF2 = {}
+
+    def __br_read__(self, br: BinaryReader, currentFrame):
+        self.lightIndex = br.read_uint32()
+        self.ctrlFlags = br.read_uint32()
+        self.vec3f = readVector(br, self.vec3f, self.ctrlFlags, currentFrame)
+        self.color = readColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
+        self.floatF0 = readFloat(br, self.floatF0, self.ctrlFlags >> 9, currentFrame)
+        self.floatF1 = readFloat(br, self.floatF1, self.ctrlFlags >> 0xc, currentFrame)
+        self.floatF2 = readFloat(br, self.floatF2, self.ctrlFlags >> 0xf, currentFrame)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.lightIndex)
+        br.write_uint32(self.ctrlFlags)
+        writeVector(br, self.vec3f, self.ctrlFlags, currentFrame)
+        writeColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
+        writeFloat(br, self.floatF0, self.ctrlFlags >> 9, currentFrame)
+        writeFloat(br, self.floatF1, self.ctrlFlags >> 0xc, currentFrame)
+        writeFloat(br, self.floatF2, self.ctrlFlags >> 0xf, currentFrame)
+
+    def finalize(self, chunks):
+        self.lightObject = chunks[self.lightIndex]
+
+'''class omniLightFrame(BrStruct):
+    def __init__(self):
+        self.lightObject = None
+        self.position = (0, 0, 0)
+        self.color = (0, 0, 0, 255)
+
+    def __br_read__(self, br: BinaryReader, currentFrame):
+        self.lightIndex = br.read_uint32()
+        self.lightObject = indexTable.Names[self.lightIndex][0]
+        self.name = indexTable.Names[self.index][1]
+
+        self.flags = br.read_uint32()
+        self.position = br.read_float32(3)
+        self.color = br.read_uint8(4)
+        self.floats = br.read_float32(3)
+
+    def finalize(self, chunks):
+        self.lightObject = chunks[self.lightIndex]'''
+
 
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
@@ -585,6 +645,16 @@ def readColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
         colorFrames[currentFrame] = br.read_uint8(4)
     return colorFrames
 
+def writeColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
+    if ctrlFlags & 7 == 2:
+        br.write_uint32(len(colorFrames))
+        for f in colorFrames:
+            br.write_uint32(f)
+            br.write_uint8(colorFrames[f])
+    elif ctrlFlags & 7 == 1:
+        for f in colorFrames:
+            br.write_uint8(colorFrames[f])
+    return
 
 class PCMFrame(BrStruct):
     def __init__(self):
