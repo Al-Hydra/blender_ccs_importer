@@ -125,7 +125,6 @@ class RigidMesh(BrStruct):
             posCount += 1
             #v_pos = self.vertices[v].position
             v_pos = get_position(self, v)
-            print(f"v_pos: {v_pos}")
             vpBuffer.write_int16(round(v_pos[0] / finalScale))
             vpBuffer.write_int16(round(v_pos[1] / finalScale))
             vpBuffer.write_int16(round(v_pos[2] / finalScale))
@@ -511,16 +510,17 @@ class DeformableMesh(BrStruct):
                     br.write_int16(int(v_UV[1] * 256))
             
             if tanBinFlag:
-                #print(f'TODO: Export meshes mesh tan & Bin')
                 for v in range(self.vertexCount):
-                    v_tan = self.vertices[v].tangents[0]
+                    #v_tan = self.vertices[v].tangents[0]
+                    v_tan = get_tangents(self, v, 0)
                     br.write_int8(int(v_tan[0] * 64))
                     br.write_int8(int(v_tan[1] * 64))
                     br.write_int8(int(v_tan[2] * 64))
                     br.write_int8(0) # tangent_sign
 
                 for v in range(self.vertexCount):
-                    v_bin = self.vertices[v].bitangents[0]
+                    #v_bin = self.vertices[v].bitangents[0]
+                    v_bin = get_bitangents(self, v, 0)
                     br.write_int8(int(v_bin[0] * 64))
                     br.write_int8(int(v_bin[1] * 64))
                     br.write_int8(int(v_bin[2] * 64))
@@ -620,7 +620,6 @@ class DeformableMesh(BrStruct):
                     #for i in range(len(self.vertices[v].positions)):
                     for i in range(b_weights):
                         #v_pos = self.vertices[v].positions[i]
-
                         v_pos = get_positions(self, v, i)
                         vpBuffer.write_int16(round(v_pos[0] / finalScale))
                         vpBuffer.write_int16(round(v_pos[1] / finalScale))
@@ -936,11 +935,8 @@ class DeformableVertex:
 
 def get_position(self, v, slot=0):
     if isinstance(self.vertices, dict):
-        print(f'self.vertices["positions"][v]: {self.vertices["positions"][v]}')
         return self.vertices["positions"][v]
-    
     else:
-        print(f'self.vertices[v].positions: {self.vertices[v].positions}')
         return self.vertices[v].positions
     
 def get_positions(self, v, slot=0):
