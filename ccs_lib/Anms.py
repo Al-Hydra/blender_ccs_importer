@@ -69,6 +69,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         ambient_f = br.read_struct(ambientFrame, None, current_frame)
         self.lights['Ambient'][current_frame] = ambient_f.color
 
+    def read_omni_light_Controller():
+        self.omniLightControllers.append(br.read_struct(omniLightController, None, current_frame))
+
     def read_note_frame():
         note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
         print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
@@ -89,7 +92,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         # Not fully understood, but seen in some files
         # Included for CCS file rewriting support
         CCSTypes.OmniLightController: read_omni_light_Controller,
-        CCSTypes.OmniLightFrame: read_omni_light_frame,
+        #CCSTypes.OmniLightFrame: read_omni_light_frame,
         CCSTypes.NoteFrame: read_note_frame,
     }
 
@@ -508,8 +511,8 @@ class noteFrame(BrStruct):
 class omniLightController(BrStruct):
     def __init__(self):
         self.lightObject = None
-        self.vec3f = (0, 0, 0)
-        self.color = (0, 0, 0, 255)
+        self.vec3f = {}
+        self.color = {}
         self.floatF0 = {}
         self.floatF1 = {}
         self.floatF2 = {}
@@ -534,6 +537,7 @@ class omniLightController(BrStruct):
 
     def finalize(self, chunks):
         self.lightObject = chunks[self.lightIndex]
+        print(f"omniLightController: {self.lightObject.name}, index: {self.lightIndex}")
 
 '''class omniLightFrame(BrStruct):
     def __init__(self):
