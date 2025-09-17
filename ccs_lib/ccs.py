@@ -125,7 +125,11 @@ class ccsFile(BrStruct):
             chunk_buf = BinaryReader()
             chunk_buf.write_struct(chunk, exportVersion)
             # Write the chunk size / 4
-            br.write_uint32(chunk_buf.size() // 4)
+            if CCSTypes[chunk.type] == CCSTypes.Texture and chunk.textureType not in (0x87, 0x88, 0x89): # is Texture but not BTX/DDS
+                br.write_uint32((chunk_buf.size() // 4) + 0x32)
+                print(f"chunk_buf.size: {((chunk_buf.size() // 4) + 0x32)}")
+            else:
+                br.write_uint32(chunk_buf.size() // 4)
             # Write chunk data
             br.write_bytes(bytes(chunk_buf.buffer()))
             chunk_end = br.pos()

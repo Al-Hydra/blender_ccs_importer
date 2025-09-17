@@ -1256,7 +1256,7 @@ class importCCS:
                 else:
                     fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
 
-                    posebone = armatureObj.pose.bones.get(target_bone)
+                posebone = armatureObj.pose.bones.get(target_bone)
     
                 if not posebone:
                     continue

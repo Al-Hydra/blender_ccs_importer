@@ -47,7 +47,7 @@ class ccsTexture(BrStruct):
             self.width = br.read_uint16()
             self.height = br.read_uint16()
             self.unk3 = br.read_uint16()
-        elif self.textureType == 0x87 or self.textureType == 0x88 or self.textureType == 0x89:
+        elif self.textureType in (0x87, 0x88, 0x89):
             br.seek(4,1)
             self.btx = br.read_struct(btxTexture)
             self.width = self.btx.width
