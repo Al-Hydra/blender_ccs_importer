@@ -421,8 +421,8 @@ class importCCS:
                                 if effChunk.model:
                                     self.makeEffects(effChunk.model, None, objChunk.clump, objChunk.name)
                 
-                if not effChunk.model:
-                    continue
+                #if not effChunk.model:
+                    #continue
                 else:
                     self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
                         #print(f'import | Perant.bone {effChunk.name}')
@@ -492,6 +492,7 @@ class importCCS:
         if self.import_animations:
             #Animations
             for anm in self.ccsf.sortedChunks["Animation"]:
+                #print(f'anm.name {anm.name}')
                 self.makeAction(anm)
         
         if self.import_stream:
@@ -1315,11 +1316,18 @@ class importCCS:
                 group_name = effect.name
                 effect.rotation_mode = 'QUATERNION'
                 
-                effect_action = bpy.data.actions.new(anim.name)
-                
-                #effect = bpy.data.objects.get(self.target_skeleton)
-                effect.animation_data_create()
-                effect.animation_data.action = effect_action
+                #create a new action slot with the effect name
+                #check if a slot already exists
+                try:
+                    slot = armatureObj.animation_data.action.slots[f"OB{ effect.name}"]
+                except:
+                    slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=effect.name)
+                    
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
                 
                 #original_coords = effect["original_coords"]
                 bloc = Vector(effect["original_coords"][0]) * 0.01
@@ -1328,21 +1336,25 @@ class importCCS:
                 
                 locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
                 data_path = f'{"location"}'
-                self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                #self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                self.insertFrames(fcurves, group_name, data_path, locations, 3)
                 
                 #Rotations Euler
                 rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
                 data_path = f'{"rotation_quaternion"}'
-                self.insertFrames(effect_action, group_name, data_path, rotations, 4)
+                #self.insertFrames(effect_action, group_name, data_path, rotations, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
                 
                 #Rotations Quaternion
                 rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
                 data_path = f'{"rotation_quaternion"}'
-                self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
+                #self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)
         
                 scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
                 data_path = f'{"scale"}'
-                self.insertFrames(effect_action, group_name, data_path, scales, 3)
+                #self.insertFrames(effect_action, group_name, data_path, scales, 3)
+                self.insertFrames(fcurves, group_name, data_path, scales, 3)
                 
         
         for obj in anim.objects.keys():

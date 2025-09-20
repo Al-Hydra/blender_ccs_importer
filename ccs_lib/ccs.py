@@ -104,6 +104,7 @@ class ccsFile(BrStruct):
             self.assets[asset].append(chunk)
         #print(f"self.assets {self.assets}")
     
+
     def __br_write__(self, br: BinaryReader, exportVersion = 0x120):
         br.write_struct(self.header, exportVersion)
         br.write_struct(self.indexTable)
@@ -124,10 +125,11 @@ class ccsFile(BrStruct):
             chunk_start = br.pos()
             chunk_buf = BinaryReader()
             chunk_buf.write_struct(chunk, exportVersion)
-            # Write the chunk size / 4
-            if CCSTypes[chunk.type] == CCSTypes.Texture and chunk.textureType not in (0x87, 0x88, 0x89): # is Texture but not BTX/DDS
+            # Write chunk size
+            if chunk.type == "Texture" and chunk.textureType in {0x0, 0x13, 0x14}: # is RGBA32/I8/I4 Texture
                 br.write_uint32((chunk_buf.size() // 4) + 0x32)
-                print(f"chunk_buf.size: {((chunk_buf.size() // 4) + 0x32)}")
+            elif chunk.type == "Texture" and chunk.textureType in {0x87, 0x88, 0x89}: # is BTX/DDS Texture
+                br.write_uint32(chunk_buf.size() // 4)  # need to look how BTX/DDS Chunk size is calculated
             else:
                 br.write_uint32(chunk_buf.size() // 4)
             # Write chunk data
@@ -138,12 +140,13 @@ class ccsFile(BrStruct):
         # End stream file test
         br.write_uint16(CCSTypes.Stream.value) # Stream Type
         br.write_uint16(0xCCCC) # Write 0xCCCC bytes
-        br.write_uint32(0x00000001) # Size
-        br.write_uint32(0x00000001) # Frame Count
+        br.write_uint32(1) # Size
+        br.write_uint32(1) # Frame Count
         br.write_uint16(CCSTypes.Frame.value) # Frame Chunk
         br.write_uint16(0xCCCC) # Write 0xCCCC bytes
-        br.write_uint32(0x00000001) # Size
-        br.write_uint32(0xffffffff) # keyframe
+        br.write_uint32(1) # Size
+        #br.write_uint32(0xffffffff) # keyframe
+        br.write_int32(-1) # keyframe
 
 
 
@@ -190,8 +193,8 @@ class ccsHeader(BrStruct):
         #br.write_uint32(self.Version)
         br.write_uint32(exportVersion)
         br.write_uint32(self.TotalChunkCount)
-        br.write_uint32(0x00000001)
-        br.write_uint32(0x00000000)
+        br.write_uint32(1)
+        br.write_uint32(0)
 
 
 class ccsIndex(BrStruct):
