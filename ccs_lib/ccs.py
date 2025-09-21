@@ -124,7 +124,10 @@ class ccsFile(BrStruct):
             # Create chunk buffer data
             chunk_start = br.pos()
             chunk_buf = BinaryReader()
-            chunk_buf.write_struct(chunk, exportVersion)
+            if chunk.type == "Animation":
+                chunk_buf.write_struct(chunk, exportVersion, self.sortedChunks)
+            else:
+                chunk_buf.write_struct(chunk, exportVersion)
             # Write chunk size
             if chunk.type == "Texture" and chunk.textureType in {0x0, 0x13, 0x14}: # is RGBA32/I8/I4 Texture
                 br.write_uint32((chunk_buf.size() // 4) + 0x32)
@@ -244,7 +247,7 @@ class ccsChunk(BrStruct):
         self.data = br.read_bytes(size - 4)
         self.type = chunkType
 
-    def __br_write__(self, br: BinaryReader, indexTable, size, version):
+    def __br_write__(self, br: BinaryReader, version):
         br.write_uint32(self.index)
         br.write_bytes(self.data)
         #print(f'Write self.data: {self.data}')

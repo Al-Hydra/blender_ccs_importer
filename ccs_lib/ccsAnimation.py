@@ -21,13 +21,13 @@ class ccsAnimation(BrStruct):
         anmChunkReader(self, br, indexTable, version)
     
     
-    def __br_write__(self, br: BinaryReader, version):
+    def __br_write__(self, br: BinaryReader, version, sortedChunks):
         br.write_uint32(self.index)
         br.write_uint32(self.frameCount)
         br.write_uint32(self.framesSectionSize)
 
         #anmChunkWriter(self, br, indexTable, version)
-        anmChunkWriter(self, br, version)
+        anmChunkWriter(self, br, version, sortedChunks)
 
 
     def finalize(self, chunks):

@@ -327,6 +327,10 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             bone_mtx_3x3 = bone_mtx.to_3x3()
             break
 
+    tri_weights = []
+    tri_weights_mat_groups = {}
+
+    matList = {}  # To track materials and their corresponding CCSF material chunks
 
     for tri in blender_mesh.loop_triangles:
 
@@ -821,8 +825,6 @@ def normalize_weights(b_weights):
 def menu_func_export(self, context):
     self.layout.operator(CCS_IMPORTER_OT_EXPORT.bl_idname,
                         text='CyberConnect Streaming File (.ccs)')
-
-
 
 
 

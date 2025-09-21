@@ -32,6 +32,7 @@ class ccsMaterial(BrStruct):
         self.EmissionColor = [0, 0, 0, 0]
 
 
+
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
@@ -105,7 +106,10 @@ class ccsMaterial(BrStruct):
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
             br.write_uint16(int(self.scaleY * 4096))
-            br.write_bytes(bytes(self.values))
+            #br.write_bytes(self.values)
+            # Reserved unknown values
+            for _ in range(9):
+                br.write_uint32(0)
         elif version < 0x130 and version > 0x120:
             br.write_uint16(int(self.offsetX * 4096))
             br.write_uint16(int(self.offsetY * 4096))

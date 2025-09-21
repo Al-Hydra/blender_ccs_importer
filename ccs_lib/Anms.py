@@ -68,7 +68,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     def read_distant_light_frame():
         light_f = br.read_struct(distantLightFrame, None, current_frame, indexTable)
         self.lights[light_f.lightObject][current_frame] = (
-            light_f.rotation, light_f.color, light_f.intensity
+            light_f.rotation, light_f.color, light_f.intensity, light_f.lightIndex, light_f.flags
         )
 
     def read_ambient_frame():
@@ -85,6 +85,12 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
 
     def read_omni_light_Controller():
         self.omniLightControllers.append(br.read_struct(omniLightController, None, current_frame))
+
+    def read_omni_light_frame():
+        light_f = br.read_struct(omniLightFrame, None, current_frame, indexTable)
+        self.lights[light_f.lightObject][current_frame] = (
+            light_f.position, light_f.color, light_f.floats, light_f.lightIndex, light_f.flags
+        )
 
     def read_note_frame():
         note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
@@ -109,7 +115,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         #CCSTypes.DirectLightController: read_direct_light_Controller,
         #CCSTypes.SpotLightController: read_spot_light_Controller,
         CCSTypes.OmniLightController: read_omni_light_Controller,
-        #CCSTypes.OmniLightFrame: read_omni_light_frame,
+        CCSTypes.OmniLightFrame: read_omni_light_frame,
         CCSTypes.NoteFrame: read_note_frame,
     }
 
@@ -132,16 +138,16 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         self.animationLoops = True
 
 
-def anmChunkWriter(self, br: BinaryReader, version):
+def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
     #current_frame = 0
 
+    final_frame = self.frameCount -1 
     for current_frame in range(self.frameCount):
         if current_frame == 0:
             # write frame 0
-            br.write_uint16(CCSTypes.Frame.value)
-            br.write_uint16(0xCCCC)
-            br.write_uint32(1)
-            br.write_int32(0) # first frame
+            anmFrame = frame()
+            frame_type = 'Frame'
+            write_frameChunk(br, anmFrame, frame_type, current_frame)
 
             # Object controllers
             for objController in self.objectControllers:
@@ -169,17 +175,13 @@ def anmChunkWriter(self, br: BinaryReader, version):
                 write_anmCtrlChunk(br, mphController, anmCtrl_type, current_frame)
 
 
-        elif current_frame < self.frameCount:
-            # write final frame as (-1) or (-2)for looping?
-            anmFrame = frame()
-            frame_type = 'Frame'
-            write_frameChunk(br, anmFrame, frame_type, current_frame)
-
+        if current_frame < self.frameCount:
+            # Write objectFrames
             for objName, frames in self.objects.items():
-                for f, (pos, rot, scale, opacity, objectIndex, flags, has_model) in frames.items():
+                for f, (pos, rot, scale, opacity, index, flags, has_model) in frames.items():
                     if current_frame == f:
                         obj_f = objectFrame()
-                        obj_f.objectIndex = objectIndex
+                        obj_f.objectIndex = index
                         obj_f.ctrlFlags = flags
                         obj_f.position = pos
                         obj_f.rotation = rot
@@ -190,33 +192,59 @@ def anmChunkWriter(self, br: BinaryReader, version):
                         frame_type = 'ObjectFrame'
                         write_frameChunk(br, obj_f, frame_type, current_frame)
 
-            for lgtName, frames in self.lights.items():
-                if current_frame in frames:
-                    lgt_f = objectFrame()
-                    frame_type = 'ObjectFrame'
-                    write_frameChunk(br, obj_f, frame_type, current_frame)
+            # Write lightFrames
+            lightChunks = {chunk.name: chunk for chunk in sortedChunks["Light"]}
+            for light_Name, frames in self.lights.items():
+                #print(f"self.lights.items(): {frames}")
 
+                for f, frame_data in frames.items():
+                    print(f"light_Name: {light_Name}, frames.items() {frames.items()}")
+                    if current_frame == f:
 
-            if current_frame == self.frameCount -1:
-                # write final frame as -1 or -2
-                anmFrame = frame()
-                frame_type = 'Frame'
+                        lightChunk = lightChunks.get(light_Name)
+
+                        if lightChunk.lightType.name == 'DistantLight':
+                            #print(f"lightChunk.type: {lightChunk.lightType} frame# {f}")
+
+                            rot, clr, en, index, flags = frame_data
+
+                            light_f = distantLightFrame()
+                            light_f.lightIndex = index
+                            light_f.flags = flags
+                            light_f.rotation = rot
+                            light_f.color = clr
+                            light_f.intensity = en
+                            frame_type = 'DistantLightFrame'
+                            write_frameChunk(br, light_f, frame_type, current_frame)
+
+                        if lightChunk.lightType.name == 'OmniLight':
+                            #print(f"lightChunk.type: {lightChunk.lightType} frame# {f}")
+
+                            pos, clr, unkf, index, flags = frame_data
+
+                            light_f = omniLightFrame()
+                            light_f.lightIndex = index
+                            light_f.flags = flags
+                            light_f.position = pos
+                            light_f.color = clr
+                            light_f.floats = unkf
+                            frame_type = 'OmniLightFrame'
+                            write_frameChunk(br, light_f, frame_type, current_frame)
+
+            # Write frame
+            anmFrame = frame()
+            frame_type = 'Frame'
+            if final_frame != current_frame:
+                #write Normal Frame
+                write_frameChunk(br, anmFrame, frame_type, current_frame)
+
+            # Write last frame
+            else:
                 last_frame = -1
                 if self.animationLoops:
                     last_frame = -2
                 write_frameChunk(br, anmFrame, frame_type, last_frame)
-                break
-        else:
-            # write final frame as -1 or -2
-            anmFrame = frame()
-            frame_type = 'Frame'
-            last_frame = -1
-            if self.animationLoops:
-                last_frame = -2
-
-            write_frameChunk(br, anmFrame, frame_type, last_frame)
-            break
-    
+            
     return
 
 
@@ -441,6 +469,7 @@ class frame(BrStruct):
 class objectFrame(BrStruct):
     def __init__(self):
         self.frame = 0
+        self.objectIndex = 0
         self.object = None
         self.name = ""
         self.ctrlFlags = 0
@@ -480,7 +509,35 @@ class objectFrame(BrStruct):
         if not flags & 0x800:
             self.has_model = br.read_uint32()
 
-    #def __br_write__(self, br: BinaryReader, currentFrame):
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.objectIndex)
+        br.write_uint32(self.ctrlFlags)
+
+        if self.ctrlFlags & 2 == 0:
+            br.write_float32(self.position[0])
+        if self.ctrlFlags & 4 == 0:
+            br.write_float32(self.position[1])
+        if self.ctrlFlags & 8 == 0:
+            br.write_float32(self.position[2])
+        
+        if self.ctrlFlags & 10 == 0:
+            br.write_float32(self.rotation[0])
+        if self.ctrlFlags & 20 == 0:
+            br.write_float32(self.rotation[1])
+        if self.ctrlFlags & 40 == 0:
+            br.write_float32(self.rotation[2])
+
+        if self.ctrlFlags & 80 == 0:
+            br.write_float32(self.scale[0])
+        if self.ctrlFlags & 100 == 0:
+            br.write_float32(self.scale[1])
+        if self.ctrlFlags & 200 == 0:
+            br.write_float32(self.scale[2])
+
+        if self.ctrlFlags & 400 == 0:
+            br.write_float32(self.opacity)
+        if self.ctrlFlags & 800 == 0:
+            br.write_uint32(self.has_model)
 
     def finalize(self, chunks):
         self.object = chunks[self.objectIndex]
@@ -570,6 +627,7 @@ class distantLightController(BrStruct):
 
 class distantLightFrame(BrStruct):
     def __init__(self):
+        self.lightIndex = 0
         self.lightObject = None
         self.rotation = (0, 0, 0)
         self.color = (0, 0, 0, 1)
@@ -577,9 +635,9 @@ class distantLightFrame(BrStruct):
         self.frame = 0
 
     def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
-        self.index = br.read_uint32()
-        self.lightObject = indexTable.Names[self.index][0]
-        self.name = indexTable.Names[self.index][1]
+        self.lightIndex = br.read_uint32()
+        self.lightObject = indexTable.Names[self.lightIndex][0]
+        self.name = indexTable.Names[self.lightIndex][0]
         
         self.flags = br.read_uint32()
         self.rotation = br.read_float32(3)
@@ -590,7 +648,7 @@ class distantLightFrame(BrStruct):
             self.intensity = br.read_float32()
 
     def __br_write__(self, br: BinaryReader, currentFrame):
-        br.write_uint32(self.index)
+        br.write_uint32(self.lightIndex)
 
         br.write_uint32(self.flags)
         br.write_float32(self.rotation)
@@ -600,7 +658,7 @@ class distantLightFrame(BrStruct):
             br.write_float32(self.intensity)
 
     def finalize(self, chunks):
-        self.lightObject = chunks[self.index]
+        self.lightObject = chunks[self.lightIndex]
 
 
 class ambientFrame(BrStruct):
@@ -720,6 +778,8 @@ class spotLightController(BrStruct):
 
 class omniLightController(BrStruct):
     def __init__(self):
+        self.lightIndex = 0
+        self.ctrlFlags = 0
         self.lightObject = None
         self.vec3f = {}        # positions ?
         self.color = {}
@@ -749,24 +809,37 @@ class omniLightController(BrStruct):
         self.lightObject = chunks[self.lightIndex]
         print(f"omniLightController: {self.lightObject.name}, index: {self.lightIndex}")
 
-'''class omniLightFrame(BrStruct):
+
+class omniLightFrame(BrStruct):
     def __init__(self):
+        self.frame = 0
+        self.lightIndex = 0
+        self.flags = 0
         self.lightObject = None
         self.position = (0, 0, 0)
         self.color = (0, 0, 0, 255)
+        self.floats = (0, 0, 0)
 
-    def __br_read__(self, br: BinaryReader, currentFrame):
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
         self.lightIndex = br.read_uint32()
         self.lightObject = indexTable.Names[self.lightIndex][0]
-        self.name = indexTable.Names[self.index][1]
+        self.name = indexTable.Names[self.lightIndex][0]
+        self.frame = currentFrame
 
         self.flags = br.read_uint32()
         self.position = br.read_float32(3)
         self.color = br.read_uint8(4)
         self.floats = br.read_float32(3)
 
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.lightIndex)
+        br.write_uint32(self.flags)
+        br.write_float32(self.position)
+        br.write_uint8(self.color)
+        br.write_float32(self.floats)
+
     def finalize(self, chunks):
-        self.lightObject = chunks[self.lightIndex]'''
+        self.lightObject = chunks[self.lightIndex]
 
 
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
