@@ -282,19 +282,14 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
     # Bone name for rigid mesh
     bone_name = mdlChunk.name.replace("MDL_", "OBJ_")
+    # Get vertex_groups from mesh object
+    vertex_groups = mesh_obj.vertex_groups
     
     # Remove incompatible vertex groups from rigid mesh in Blender
     if self.removeWrongWeights:
-        vertex_groups = mesh_obj.vertex_groups
-        remove_groups = []
-
         for vg in vertex_groups:
             if vg.name != bone_name:
-                remove_groups.append(vg)
-
-        for vg in remove_groups:
-            #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
-            vertex_groups.remove(vg)
+                vertex_groups.remove(vg)
             
     # Assign bone reference for mdlChunk to rigid mesh
     if not mesh_obj.vertex_groups:
@@ -314,8 +309,6 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     armature_matrix = blender_model.matrix_world
     print(f"mesh_matrix: {mesh_matrix}, armature_matrix: {armature_matrix}")
 
-    mesh = RigidMesh()
-
     bone_name = mesh_obj.name.replace("MDL_", "OBJ_")
     #print(f'RigidMesh bone_name: {bone_name}')
     # create bone matrix
@@ -327,18 +320,69 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
             bone_mtx_3x3 = bone_mtx.to_3x3()
             break
 
-    tri_weights = []
-    tri_weights_mat_groups = {}
+    # Sort triangles by  materials
+    # This will help in organizing triangles into meshes within the CCSF model
+    tri_mat = {}
 
     matList = {}  # To track materials and their corresponding CCSF material chunks
-
     for tri in blender_mesh.loop_triangles:
+        mat_idx = tri.material_index
+        print(f"mat_idx: {mat_idx}")
 
-        for l, loop_index in enumerate(tri.loops):
-            loop = blender_mesh.loops[loop_index]
-            v_idx = loop.vertex_index
-            v = blender_mesh.vertices[v_idx]
-            bm_vert = bm.verts[v_idx]
+        if mat_idx not in tri_mat:
+            tri_mat[mat_idx] = []
+
+            tri_mat[mat_idx].append(tri)
+            # Create reference list for materials and their corresponding CCSF material chunks
+            if mat_idx not in matList:
+                mdl_prefix = blender_mesh.name
+                print(f"mdl_prefix: {mdl_prefix}")
+                print(f"blender_mesh.materials: {blender_mesh.materials}")
+                if len(blender_mesh.materials) == 0:
+                    mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+                else:
+                    bm_mat_name = blender_mesh.materials[mat_idx].name
+
+                    if bm_mat_name.startswith("MDL_"):
+                        mat_name = bm_mat_name.removeprefix(mdl_prefix + "_")
+                    elif bm_mat_name.startswith("MAT_"):
+                        mat_name = bm_mat_name
+                    else:
+                        mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+
+                print(f"mdl_prefix: {mdl_prefix}, mat_name: {mat_name}")
+
+                ccsf_mat = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name), None)
+                if not ccsf_mat:
+                    self.report({'ERROR'}, "Matching CCSF material not found.")
+                    return {"CANCELLED"}
+                else:
+                    matChunk_idx = ccsf_mat.index
+                    print("Found matching CCSF material.")
+        
+                matList[mat_idx] = (mat_name, matChunk_idx)
+                print(f"matList: {matList[mat_idx]}")
+        else:
+            # Group triangles where vertices share the same material
+            mat_idx = tri.material_index
+            if mat_idx not in tri_mat:
+                tri_mat[mat_idx] = []
+            tri_mat[mat_idx].append(tri)
+
+    meshes = list()
+
+    for mat_idx in tri_mat:
+    
+        mesh = RigidMesh()
+        print(f"mat_idx: {mat_idx}")
+
+        for i, tri in enumerate(tri_mat[mat_idx]):
+            if len(blender_mesh.materials) == 0:
+                mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+            else:
+                mat_name = blender_mesh.materials[tri.material_index].name
+
+            matChunk_idx = matList[tri.material_index][1]
 
             # Single trianle flags layout
             # Read from end
@@ -348,45 +392,56 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
 
             #flags = [2, 2, 0]  # start, middle, end
             flags = [1, 1, 0]  # start, middle, end
+
+            #for l, loop_index in enumerate(tri.loops):
+            for l, loop_index in enumerate(tri.loops):
+                loop = blender_mesh.loops[loop_index]
+                v_idx = loop.vertex_index
+                v = blender_mesh.vertices[v_idx]
+                bm_vert = bm.verts[v_idx]
+                
+                # prepare position, normal, tangent, bitangent
+                pos = bone_mtx @ v.co
+                norm = (bone_mtx_3x3 @ loop.normal).normalized()
+                tang = (bone_mtx_3x3 @ loop.tangent).normalized()
+                #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
+                lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                bi = (bone_mtx_3x3 @ lBit).normalized()
+                triFlag = flags[l]
+                uv = uv_layer[loop_index].uv
+                col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
+
+                if loop_index >= len(uv_layer):
+                    self.report({'ERROR'}, f"loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
+
+                mesh_v = Vertex()
+                mesh_v.positions = tuple(pos)
+                mesh_v.normals = tuple(norm)
+                mesh_v.tangents = tuple(tang)
+                mesh_v.bitangents = tuple(bi)
+                mesh_v.color = col
+                mesh_v.UV = uv
+                #mesh_v.triangleFlags = 0
+                mesh_v.triangleFlags = triFlag
+
+                mesh.vertices.append(mesh_v)
+                next_index += 1
+                
+            mesh.vertexCount = len(mesh.vertices)
+
+            # copy parent and material from original mesh in ccs
+            mesh.parentIndex = mdlChunk.meshes[0].parentIndex
+            mesh.materialIndex = mdlChunk.meshes[0].materialIndex
+            mesh.materialIndex = matChunk_idx
             
-            # prepare position, normal, tangent, bitangent
-            pos = bone_mtx @ v.co
-            norm = (bone_mtx_3x3 @ loop.normal).normalized()
-            tang = (bone_mtx_3x3 @ loop.tangent).normalized()
-            #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
-            lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-            bi = (bone_mtx_3x3 @ lBit).normalized()
-            triFlag = flags[l]
-            uv = uv_layer[loop_index].uv
-            col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
+        meshes.append(mesh)
 
-            if loop_index >= len(uv_layer):
-                self.report({'ERROR'}, f"loop_index {loop_index} out of range for UV layer with length {len(uv_layer)}")
-
-            mesh_v = Vertex()
-            mesh_v.positions = tuple(pos)
-            mesh_v.normals = tuple(norm)
-            mesh_v.tangents = tuple(tang)
-            mesh_v.bitangents = tuple(bi)
-            mesh_v.color = col
-            mesh_v.UV = uv
-            #mesh_v.triangleFlags = 0
-            mesh_v.triangleFlags = triFlag
-
-            mesh.vertices.append(mesh_v)
-            next_index += 1
-
-    # copy parent and material from original mesh in ccs
-    mesh.parentIndex = mdlChunk.meshes[0].parentIndex
-    mesh.materialIndex = mdlChunk.meshes[0].materialIndex
-
-    mesh.vertexCount = len(mesh.vertices)
-    mdlChunk.meshes = mesh
+    mdlChunk.meshes = meshes
+    mdlChunk.meshCount = len(mdlChunk.meshes)
 
     bm.free()
 
     return
-
 
 
 def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
@@ -403,15 +458,9 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
     # Remove incompatible vertex groups not in cmpChunk.bones &/or mdlChunk.lookupList
     if self.removeWrongWeights:
-        remove_groups = []
-
         for vg in vertex_groups:
             if vg.name not in bone_names:
-                remove_groups.append(vg)
-
-        for vg in remove_groups:
-            #print(f"Removing vertex group: {vg.name} not in mdlChunk {mdlChunk.name} lookupList:")
-            vertex_groups.remove(vg)
+                vertex_groups.remove(vg)
 
     # Add missing compatible vertex groups to mesh from cmpChunk.bones &/or mdlChunk.lookupList
     for bn in bone_names:

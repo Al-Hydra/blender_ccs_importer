@@ -139,8 +139,6 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
 
 
 def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
-    #current_frame = 0
-
     final_frame = self.frameCount -1 
     for current_frame in range(self.frameCount):
         if current_frame == 0:
@@ -177,9 +175,14 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
 
         if current_frame < self.frameCount:
             # Write objectFrames
-            for objName, frames in self.objects.items():
-                for f, (pos, rot, scale, opacity, index, flags, has_model) in frames.items():
+            for object_name, frames in self.objects.items():
+                #print(f"object_Name: {object_name}, frames.items() {frames.items()}")
+                for f, frame_data in frames.items():
                     if current_frame == f:
+
+                        # Unpack Object frame_data
+                        pos, rot, scale, opacity, index, flags, has_model = frame_data
+
                         obj_f = objectFrame()
                         obj_f.objectIndex = index
                         obj_f.ctrlFlags = flags
@@ -198,7 +201,7 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                 #print(f"self.lights.items(): {frames}")
 
                 for f, frame_data in frames.items():
-                    print(f"light_Name: {light_Name}, frames.items() {frames.items()}")
+                    #print(f"light_Name: {light_Name}, frames.items() {frames.items()}")
                     if current_frame == f:
 
                         lightChunk = lightChunks.get(light_Name)
@@ -206,6 +209,7 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                         if lightChunk.lightType.name == 'DistantLight':
                             #print(f"lightChunk.type: {lightChunk.lightType} frame# {f}")
 
+                            # Unpack DistantLight frame_data
                             rot, clr, en, index, flags = frame_data
 
                             light_f = distantLightFrame()
@@ -220,6 +224,7 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                         if lightChunk.lightType.name == 'OmniLight':
                             #print(f"lightChunk.type: {lightChunk.lightType} frame# {f}")
 
+                            # Unpack OmniLight frame_data
                             pos, clr, unkf, index, flags = frame_data
 
                             light_f = omniLightFrame()
