@@ -7,6 +7,7 @@ class ccsMorph(BrStruct):
         self.type = "Morph"
         self.path = ''
         self.target = None
+
     def __br_read__(self, br: BinaryReader, indexTable, version):
         self.index = br.read_uint32()
         self.name = indexTable.Names[self.index][0]
@@ -16,6 +17,9 @@ class ccsMorph(BrStruct):
         self.targetName = indexTable.Names[self.targetIndex][0]
         self.targetPath = indexTable.Names[self.targetIndex][1]
 
-    
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.index)
+        br.write_uint32(self.target.index)
+
     def finalize(self, chunks):
         self.target = chunks.get(self.targetIndex)

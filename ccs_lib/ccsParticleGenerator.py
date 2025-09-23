@@ -21,19 +21,19 @@ class ccsParticleGenerator(BrStruct):
 
         self.unkIndex = br.read_uint32() # May  be unused
 
-        flags = br.read_uint32()
-        print(f'PartGen | HEX flags {flags:#010x}')
-        self.pgcflags = setPGCflags(flags)
+        self.flags = br.read_uint32()
+        print(f'PartGen | HEX flags {self.flags:#010x}')
+        self.pgcflags = setPGCflags(self.flags)
         print(f'PartGen | HEX pgcFlags {self.pgcflags:#04x}')
-        pgpFlags = setPGPFlags(flags)
+        pgpFlags = setPGPFlags(self.flags)
         print(f'PartGen | HEX pgpFlags {pgpFlags:#06x}')
 
         self.generatorParam = br.read_struct(ccParticleGeneratorParam, None, pgpFlags)
 
         # Get number of resources and forcefields
-        self.resourceCount = ((flags >> 0x0c) & 0x0f)
+        self.resourceCount = ((self.flags >> 0x0c) & 0x0f)
         print(f'PartGen | {self.name} resourceCount = {self.resourceCount}')
-        self.forceFieldCount = ((flags >> 0x10) & 0x0f)
+        self.forceFieldCount = ((self.flags >> 0x10) & 0x0f)
         print(f'PartGen | {self.name} forceFieldCount = {self.forceFieldCount}')
 
         self.fade_400 = br.read_float32()
@@ -56,6 +56,30 @@ class ccsParticleGenerator(BrStruct):
             print(f'PartGen | resource# {i} index {self.resource[i].resourceIndex}')
     
 
+    def __br_write__(self, br: BinaryReader, version=0x120):
+        br.write_uint32(self.index)
+        br.write_uint32(self.unkIndex)
+        br.write_uint32(self.flags)
+
+        br.write_struct(self.generatorParam)
+
+        br.write_float32(self.fade_400)
+        br.write_float32(self.clip_50)
+        br.write_float32(self.fade_4000)
+        br.write_float32(self.clip_5000)
+        br.write_float32(self.unk1)
+        br.write_float32(self.unk2)
+        br.write_float32(self.unk3)
+
+        for forceFieldParam in self.forceFieldParam:
+            forceFieldParam: ccParticleForceFieldParam
+            br.write_struct(forceFieldParam)
+
+        for resource in self.resource:
+            resource: PartResource
+            br.write_struct(resource, version)
+
+        
     def finalize(self, chunks):
         #print("PartGen | finalize() called")  # Debug line
         for partResource in self.resource:
@@ -108,18 +132,37 @@ class ccParticleGeneratorParam(BrStruct):
         self.unk11 = br.read_float32()
         self.unk12 = br.read_int16()
         self.unk13 = br.read_int16()
-        self.FadeInRate = br.read_int16() * 0.0004882813
-        self.FadeOutRate = br.read_int16() * 0.0004882813
-        #print(f'PartGen  | GenParam FadeInRate {self.FadeInRate}')
+        self.FadeInRate = br.read_int16() / 2048    # 1 * 0.0004882813
+        self.FadeOutRate = br.read_int16() / 2048   # 1 * 0.0004882813
+        #print(f'PartGen  | GenParam FadeInRate {self.FadeInRate}') 
         #print(f'PartGen  | GenParam FadeOutRate {self.FadeOutRate}')
         print(f'PartGen  | GenParam pgpFlags >> 2 {pgpFlags >> 2:06x}, pgpFlags >> 4 {pgpFlags >> 4:06x}, pgpFlags >> 0xd {pgpFlags >> 0xd:06x}')
+
+    def __br_write__(self, br: BinaryReader):
+        br.write_int16(self.unk01)
+        br.write_uint16(0xCCCC)     # Write 0xCCCC bytes
+        br.write_float32(self.unk02)
+        br.write_uint16(self.unk03)
+        br.write_uint16(self.unk04)
+        br.write_uint16(self.unk05)
+        br.write_uint16(self.unk06)
+        br.write_float32(self.unk07)
+        br.write_float32(self.unk08)
+        br.write_float32(self.unk09)
+        br.write_float32(self.unk10)
+        br.write_float32(self.unk11)
+        br.write_int16(self.unk12)
+        br.write_int16(self.unk13)
+        br.write_int16(round(self.FadeInRate * 2048))
+        br.write_int16(round(self.FadeOutRate * 2048))
 
 
 class PartResource(BrStruct):
     def __init__(self):
         self.partResource = None
+        self.unk0 = 0   # Plays a role in changing Clut & Texture
         self.unk1 = 0   # Plays a role in changing Clut & Texture
-        self.unk2 = 0   # Plays a role in changing Clut & Texture
+        self.unk2 = 0
         self.unk3 = 0   # Mask to 2 bits
 
     def __br_read__(self, br: BinaryReader, version):
@@ -128,7 +171,15 @@ class PartResource(BrStruct):
             self.unk0 = br.read_int8()      # Plays a role in changing Clut & Texture
             self.unk1 = br.read_int8()      # Plays a role in changing Texture
             self.unk2 = br.read_int8()
-            self.unk3 = br.read_int8() & 3  # Mask to 2 bits  # Skip CC
+            self.unk3 = br.read_int8()      # (self.unk3 & 3) Mask to 2 bits  # Skip CC
+
+    def __br_write__(self, br: BinaryReader, version=0x120):
+        br.write_uint32(self.resourceIndex)
+        if version > 0x122:
+            br.write_int8(self.unk0)
+            br.write_int8(self.unk1)
+            br.write_int8(self.unk2)
+            br.write_int8(self.unk3)
 
     def finalize(self, chunks):
         self.partResource = chunks.get(self.resourceIndex)
@@ -147,9 +198,9 @@ class ccParticleForceFieldParam(BrStruct):
 
     def __br_read__(self, br: BinaryReader):
         br.seek(4, 1)  # Skip padding
-        unk = br.read_uint8()
-        self.unk0 = unk & 1
-        self.unk1 = unk >> 1
+        self.unk1 = br.read_uint8()
+        self.unk1_0 = self.unk1 & 1
+        self.unk1_1 = self.unk1 >> 1
         br.seek(1, 1)  # Skip CC
         self.type = ForceFieldTypes(br.read_uint8())
         br.seek(1, 1)
@@ -161,6 +212,20 @@ class ccParticleForceFieldParam(BrStruct):
         self.value2 = br.read_float32()
         self.value3 = br.read_float32()
         self.value4 = br.read_float32()
+
+    def __br_write__(self, br: BinaryReader):
+        br.write_uint32(0)  # Write padding
+        br.write_uint8(self.unk1)
+        br.write_uint8(0xCC)   # Write CC
+        br.write_uint8(self.type.value)
+        br.write_uint8(0)   # Write padding
+        br.write_uint16(self.unk2)
+        br.write_uint16(0xCCCC)  # Write CCCC
+        br.write_float32(self.value0)
+        br.write_float32(self.value1)
+        br.write_float32(self.value2)
+        br.write_float32(self.value3)
+        br.write_float32(self.value4)
 
 
 class ForceFieldTypes(Enum):

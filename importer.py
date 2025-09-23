@@ -421,8 +421,8 @@ class importCCS:
                                 if effChunk.model:
                                     self.makeEffects(effChunk.model, None, objChunk.clump, objChunk.name)
                 
-                if not effChunk.model:
-                    continue
+                #if not effChunk.model:
+                    #continue
                 else:
                     self.makeEffects(effChunk.model, effChunk.clump, None, effChunk.name)
                         #print(f'import | Perant.bone {effChunk.name}')
@@ -492,6 +492,7 @@ class importCCS:
         if self.import_animations:
             #Animations
             for anm in self.ccsf.sortedChunks["Animation"]:
+                #print(f'anm.name {anm.name}')
                 self.makeAction(anm)
         
         if self.import_stream:
@@ -1256,7 +1257,7 @@ class importCCS:
                 else:
                     fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
 
-                    posebone = armatureObj.pose.bones.get(target_bone)
+                posebone = armatureObj.pose.bones.get(target_bone)
     
                 if not posebone:
                     continue
@@ -1315,11 +1316,18 @@ class importCCS:
                 group_name = effect.name
                 effect.rotation_mode = 'QUATERNION'
                 
-                effect_action = bpy.data.actions.new(anim.name)
-                
-                #effect = bpy.data.objects.get(self.target_skeleton)
-                effect.animation_data_create()
-                effect.animation_data.action = effect_action
+                #create a new action slot with the effect name
+                #check if a slot already exists
+                try:
+                    slot = armatureObj.animation_data.action.slots[f"OB{ effect.name}"]
+                except:
+                    slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=effect.name)
+                    
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
                 
                 #original_coords = effect["original_coords"]
                 bloc = Vector(effect["original_coords"][0]) * 0.01
@@ -1328,21 +1336,25 @@ class importCCS:
                 
                 locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
                 data_path = f'{"location"}'
-                self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                #self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                self.insertFrames(fcurves, group_name, data_path, locations, 3)
                 
                 #Rotations Euler
                 rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
                 data_path = f'{"rotation_quaternion"}'
-                self.insertFrames(effect_action, group_name, data_path, rotations, 4)
+                #self.insertFrames(effect_action, group_name, data_path, rotations, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
                 
                 #Rotations Quaternion
                 rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
                 data_path = f'{"rotation_quaternion"}'
-                self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
+                #self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
+                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)
         
                 scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
                 data_path = f'{"scale"}'
-                self.insertFrames(effect_action, group_name, data_path, scales, 3)
+                #self.insertFrames(effect_action, group_name, data_path, scales, 3)
+                self.insertFrames(fcurves, group_name, data_path, scales, 3)
                 
         
         for obj in anim.objects.keys():
@@ -1459,7 +1471,6 @@ class importCCS:
                     visibility[frame] = [0]
 
             
-            
             data_path = f'{bone_path}.{"location"}'
             self.insertFrames(fcurves, group_name, data_path, locations, 3)
 
@@ -1518,8 +1529,7 @@ class importCCS:
                     #except:
                     #    print(f"Error at {targetShapeKey.name}")
 
-        
-
+ 
         for cam in anim.cameras.keys():
             cameraObject = self.collection.objects.get(cam)
 
@@ -1581,42 +1591,83 @@ class importCCS:
             group_name = action.groups.new(name = light).name
 
             if lightObject:
-                #create a separate action for each light
-                light_action = action
-                #apply the animation on the light
-                lightObject.animation_data_create()
-                lightObject.animation_data.action = light_action
-                #create a light slot
-                slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
-                lightObject.animation_data.action_slot = slot
+                for lightChunk in self.ccsf.sortedChunks["Light"]:
+                    if lightObject.name == lightChunk.name:
+                        #print(f"lightType: {lightChunk.lightType.name}")
+                        if lightChunk.lightType.name == 'DistantLight':
+                            #create a separate action for each light
+                            light_action = action
+                            #apply the animation on the light
+                            lightObject.animation_data_create()
+                            lightObject.animation_data.action = light_action
+                            #create a light slot
+                            slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+                            lightObject.animation_data.action_slot = slot
+                            
+                            channelbag = action.layers[0].strips[0].channelbag(slot)
+                        
+                            if channelbag:
+                                fcurves = channelbag.fcurves
+                            else:
+                                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                            
 
-                
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-            
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
-                
+                            locations = {}
+                            rotations = {}
+                            energy = {}
+                            color = {}
+                            for frame, values in anim.lights[light].items():
+                                rot, col, en, _, _ = values
+                                rotations[frame] = [radians(r) for r in rot] 
+                                energy[frame] = [en]
+                                color[frame] = [c / 255 for c in col]
+                            
+                            data_path = f'{"rotation_euler"}'
+                            self.insertFrames(fcurves, group_name, data_path, rotations, 3)
+                        
+                            data_path = f'{"ccs_manager.lightdir_intensity"}'
+                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, energy, 1)
+                            
+                            data_path = f'{"ccs_manager.lightdir_color"}'
+                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
 
-                locations = {}
-                rotations = {}
-                energy = {}
-                color = {}
-                for frame, values in anim.lights[light].items():
-                    rot, col, en = values
-                    rotations[frame] = [radians(r) for r in rot] 
-                    energy[frame] = [en]
-                    color[frame] = [c / 255 for c in col]
+                        if lightChunk.lightType.name == 'OmniLight':
+                            print(f"lightType: {lightChunk.lightType.name}")
+                            light_action = action
+                            #apply the animation on the light
+                            lightObject.animation_data_create()
+                            lightObject.animation_data.action = light_action
+                            #create a light slot
+                            slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+                            lightObject.animation_data.action_slot = slot
+                            
+                            channelbag = action.layers[0].strips[0].channelbag(slot)
+                        
+                            if channelbag:
+                                fcurves = channelbag.fcurves
+                            else:
+                                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                            
 
-                data_path = f'{"rotation_euler"}'
-                self.insertFrames(fcurves, group_name, data_path, rotations, 3)
-            
-                data_path = f'{"ccs_manager.lightdir_intensity"}'
-                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, energy, 1)
-                
-                data_path = f'{"ccs_manager.lightdir_color"}'
-                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
+                            locations = {}
+                            rotations = {}
+                            #scales = {}
+                            color = {}
+                            for frame, values in anim.lights[light].items():
+                                loc, col, unkf, _, _ = values
+                                locations[frame] = Vector(loc) * 0.01
+                                #scales[frame] = Vector(unkf) * 0.01
+                                color[frame] = [c / 255 for c in col]
+
+                            data_path = f'{"location"}'
+                            self.insertFrames(fcurves, group_name, data_path, locations, 3)
+
+                            '''data_path = f'{"scale"}'
+                            self.insertFrames(fcurves, group_name, data_path, scales, 3)'''
+                            
+                            '''data_path = f'{"ccs_manager.lightdir_color"}'
+                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)'''
+
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]

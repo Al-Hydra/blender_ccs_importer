@@ -121,7 +121,7 @@ class RigidMesh(BrStruct):
         vbnBuffer = BinaryReader(encoding='cp932')
 
         for v in range(self.vertexCount):
-            print(f"self.vertexCount: {self.vertexCount}")
+            #print(f"self.vertexCount: {self.vertexCount}")
             posCount += 1
             #v_pos = self.vertices[v].position
             v_pos = get_position(self, v)

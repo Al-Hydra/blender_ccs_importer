@@ -14,12 +14,17 @@ class ccsLight(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
 
-        self.lightType = lightType(br.read_uint32() & 0xFF)
+        #self.lightType = lightType(br.read_uint32() & 0xFF)
+        self.lightType = lightType(br.read_uint8())
+        self.unk = br.read_uint8()
+        br.seek(2, 1) # padding
 
 
     def __br_write__(self, br: BinaryReader, version):
         br.write_uint32(self.index)
-        br.write_uint32(self.lightType.value)
+        br.write_uint8(self.lightType.value)
+        br.write_uint8(self.unk)   
+        br.write_uint16(0)
 
 
     def finalize(self, chunks):
