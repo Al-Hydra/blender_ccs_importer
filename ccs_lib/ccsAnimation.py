@@ -34,4 +34,18 @@ class ccsAnimation(BrStruct):
         for objectCtrl in self.objectControllers:
             objectCtrl.finalize(chunks)
         
+        for cameraCtrl in self.cameraControllers:
+            cameraCtrl.finalize(chunks)
+        
+        for distantLightCtrl in self.distantLightControllers:
+            distantLightCtrl.finalize(chunks)
+        
+        '''#or directLightCtrl in self.directLightControllers:
+            directLightCtrl.finalize(chunks)'''
+        
+        '''#or spotLightCtrl in self.spotLightControllers:
+            dspotLightCtrl.finalize(chunks)'''
+        
+        for omniLightCtrl in self.omniLightControllers:
+            omniLightCtrl.finalize(chunks)
 

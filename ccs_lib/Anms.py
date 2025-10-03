@@ -10,6 +10,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.materials = defaultdict(dict)
     self.morphs = defaultdict(lambda: defaultdict(dict))
     self.objectControllers = []
+    self.cameraControllers = []
     self.morphControllers = []
     self.materialControllers = []
     self.distantLightControllers = []
@@ -33,6 +34,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
             obj_f.position, obj_f.rotation, obj_f.scale, obj_f.opacity, obj_f.objectIndex, obj_f.ctrlFlags, obj_f.has_model 
         )
 
+    def read_camera_controller():
+        self.cameraControllers.append(br.read_struct(cameraController, None, current_frame))
+    
     def read_camera_frame():
         cam_f = br.read_struct(cameraFrame, None, current_frame, indexTable)
         self.cameras[cam_f.name][current_frame] = (
@@ -101,6 +105,7 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         CCSTypes.Frame: read_frame,
         CCSTypes.ObjectController: read_object_controller,
         CCSTypes.ObjectFrame: read_object_frame,
+        CCSTypes.CameraController: read_camera_controller,
         CCSTypes.CameraFrame: read_camera_frame,
         CCSTypes.MorphController: read_morph_controller,
         CCSTypes.MorphFrame: read_morph_frame,
@@ -171,7 +176,6 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
             for mphController in self.morphControllers:
                 anmCtrl_type = 'MorphController'
                 write_anmCtrlChunk(br, mphController, anmCtrl_type, current_frame)
-
 
         if current_frame < self.frameCount:
             # Write objectFrames
@@ -323,7 +327,7 @@ class cameraController(BrStruct):
         self.positions = readVector(br, self.positions, self.ctrlFlags, currentFrame)
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-        self.FOV = readFloat(br, self.FOV, self.ctrlFlags, currentFrame)
+        self.FOV = readFloat(br, self.FOV, self.ctrlFlags >> 6, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
         br.write_uint32(self.cameraIndex)
@@ -331,7 +335,7 @@ class cameraController(BrStruct):
         writeVector(br, self.positions, self.ctrlFlags, currentFrame)
         writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
-        writeFloat(br, self.FOV, self.ctrlFlags, currentFrame)
+        writeFloat(br, self.FOV, self.ctrlFlags >> 6, currentFrame)
 
     def finalize(self, chunks):
         self.camera = chunks[self.cameraIndex]
@@ -370,7 +374,6 @@ class materialController(BrStruct):
 
     def finalize(self, chunks):
         self.material = chunks[self.index]
-
 
 class materialFrame(BrStruct):
     def __init__(self):
@@ -629,7 +632,6 @@ class distantLightController(BrStruct):
         self.lightObject = chunks[self.lightIndex]
         print(f"distantLightController: {self.lightObject.name}, index: {self.lightIndex}")
 
-
 class distantLightFrame(BrStruct):
     def __init__(self):
         self.lightIndex = 0
@@ -708,7 +710,6 @@ class directLightController(BrStruct):
         self.float_1 = {}
         self.float_2 = {}
         self.float_3 = {}
-        self.float_4 = {}
 
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.lightIndex = br.read_uint32()
@@ -717,10 +718,10 @@ class directLightController(BrStruct):
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.color = readColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
-        self.float1 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
-        self.float2 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
-        self.float3 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
-        self.float4 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
+        self.float_0 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
+        self.float_1 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
+        self.float_2 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
+        self.float_3 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
         br.write_uint32(self.lightIndex)
@@ -750,7 +751,6 @@ class spotLightController(BrStruct):
         self.float_1 = {}
         self.float_2 = {}
         self.float_3 = {}
-        self.float_4 = {}
 
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.lightIndex = br.read_uint32()
@@ -759,10 +759,10 @@ class spotLightController(BrStruct):
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.color = readColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
-        self.float1 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
-        self.float2 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
-        self.float3 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
-        self.float4 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
+        self.float_0 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
+        self.float_1 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
+        self.float_2 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
+        self.float_3 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
         br.write_uint32(self.lightIndex)
@@ -813,7 +813,6 @@ class omniLightController(BrStruct):
     def finalize(self, chunks):
         self.lightObject = chunks[self.lightIndex]
         print(f"omniLightController: {self.lightObject.name}, index: {self.lightIndex}")
-
 
 class omniLightFrame(BrStruct):
     def __init__(self):
@@ -947,6 +946,7 @@ def writeColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
         for f in colorFrames:
             br.write_uint8(colorFrames[f])
     return
+
 
 class PCMFrame(BrStruct):
     def __init__(self):
