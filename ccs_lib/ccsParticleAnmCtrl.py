@@ -1,4 +1,5 @@
 from .utils.PyBinaryReader.binary_reader import *
+from collections import defaultdict
 
 
 class ccsParticleAnmCtrl(BrStruct):
@@ -49,19 +50,23 @@ class ccsParticleAnmCtrl(BrStruct):
 
         for generatorCtrl in self.partGeneratorCtrl:
             generatorCtrl.finalize(chunks)
-
-        for i in range(self.ctrlCount):
-            print(f'PartAnmCtrl finalize | GeneratorCtrl[{i}] {self.partGeneratorCtrl[i].generator.name}')
+            print(f'PartAnmCtrl finalize | GeneratorCtrl {generatorCtrl.generator.name}')
+            print(f'PartAnmCtrl finalize | GeneratorCtrl.ctrlData {generatorCtrl.ctrlBytes}')
+            print(f'PartAnmCtrl finalize | GeneratorCtrl.ctrlData[1] {generatorCtrl.ctrlBytes[1]}')
 
 
 class ccPartGeneratorCtrl(BrStruct):
+#class generatorController(BrStruct):
     def __init__(self):
         self.generator = None
         self.object = None
         self.extraObject = None
-        self.count  = 0
+        self.frameCount = 0
         self.frames = []
-        self.ctrlData = []
+        self.ctrlBytes = []
+        self.busyFlags = defaultdict(dict)
+        self.floats = defaultdict(dict)
+        self.strings = defaultdict(dict)
 
     def __br_read__(self, br: BinaryReader):
         self.partGeneratorIndex = br.read_uint32()
@@ -69,25 +74,55 @@ class ccPartGeneratorCtrl(BrStruct):
         self.extraIndex = br.read_uint32() # Extra Object index
         self.unk2 = br.read_uint32() # padding?
 
-        self.count = br.read_uint16()
+        self.frameCount = br.read_uint16()
         br.seek(2, 1)  # Skip CCCC
-        '''print(f'PartAnmCtrl | GeneratorCtrl frameCount {self.frameCount}')
-        self.frames = br.read_uint8(self.frameCount)
-        br.align_pos(4)'''
 
-        self.dataCount = (self.count + 3) >> 2
-        print(f'PartAnmCtrl | GeneratorCtrl dataSize = {self.dataCount}')
-        if self.dataCount != 0:
-            dataSize = self.dataCount * 4
-            print(f'PartAnmCtrl | GeneratorCtrl dataSize*4 = {dataSize}')
-            #self.ctrlData = br.read_uint8(dataSize * 4)
-            while True:
-                self.ctrlData.extend(br.read_uint8(4))
-                if len(self.ctrlData) >= dataSize:
-                    print(f'PartAnmCtrl | GeneratorCtrl self.ctrlData size = {len(self.ctrlData)}')
-                    break
+        dataSize = ((self.frameCount + 3) >> 2 ) * 4
+        print(f'PartAnmCtrl | GeneratorCtrl dataSize = {dataSize}')
+        if dataSize != 0:
 
-            print(f'PartAnmCtrl | GeneratorCtrl ctrlData {self.ctrlData}')
+            ctrlBuffer = BinaryReader(br.read_bytes(dataSize), encoding='cp932')
+            self.ctrlBytes = bytes(ctrlBuffer.buffer())
+
+            #for i in range(1, dataSize):
+            for frame in range(dataSize):
+                #ctrlData = ctrlBuffer
+                ctrlBuffer.seek(frame, 0)
+                ctrlFlag = ctrlBuffer.read_int8()
+                getBusy(self, frame, ctrlFlag)
+
+            # in rear cases ctrlBuffercontains floats
+            for f32 in range(dataSize // 4):
+                #ctrlData = ctrlBuffer
+                ctrlBuffer.seek(f32 * 4, 0)
+                self.floats[f32] = ctrlBuffer.read_float32()
+
+            '''
+            # in rear cases ctrlBuffer contains strings
+            strings_Length = 0
+            s = 0
+            while strings_Length < dataSize:
+                #ctrlData = ctrlBuffer
+                ctrlBuffer.seek(strings_Length, 0)
+                try:
+                    string = ctrlBuffer.read_str()
+                except:
+                    strings_Length += 1 # skip empty strings
+                    continue
+                if string == "":
+                    strings_Length += 1 # skip empty strings
+                    continue
+
+                self.strings[s] = string
+                strings_Length += len(string.encode("cp932")) + 1 # +1 for null terminator
+                s += 1
+            '''
+
+        print(f'PartAnmCtrl | GeneratorCtrl ctrlData {self.ctrlBytes}')
+        print(f'PartAnmCtrl | GeneratorCtrl ctrlData[0] {self.ctrlBytes[1]}')
+        print(f'PartAnmCtrl | self.busyFlags {range(self.frameCount)}, {range(dataSize)} | self.busyFlags {self.busyFlags}')
+        print(f'PartAnmCtrl | floats {range(dataSize // 4)}, self.floats {self.floats}')
+        print(f'PartAnmCtrl | self.strings {self.strings}')
 
 
     def __br_write__(self, br: BinaryReader):
@@ -96,13 +131,13 @@ class ccPartGeneratorCtrl(BrStruct):
         br.write_uint32(self.extraIndex) # Extra Object index
         br.write_uint32(self.unk2) # padding?
 
-        br.write_uint16(self.count)
+        br.write_uint16(self.frameCount)
         br.write_uint16(0xCCCC)  # Write 0xCCCC bytes
 
-        self.dataCount = (self.count + 3) >> 2
-        if self.dataCount != 0:
+        dataSize = (self.frameCount + 3) >> 2
+        if dataSize != 0:
 
-            br.write_bytes(bytes(self.ctrlData))
+            br.write_bytes(self.ctrlBytes)
             
 
     def finalize(self, chunks):
@@ -116,3 +151,19 @@ class ccPartGeneratorCtrl(BrStruct):
             #raise ValueError(f' extraObject index ture: name {extraObject.name}, type {extraObject.type}')
             print(f' extraObject index ture: name {self.extraObject.name}, type {self.extraObject.type}')
             
+
+def getBusy(self, current_frame, ctrlFlag):
+            #self.busyFlags[frame] = ctrlFlag
+            if ctrlFlag == 1:
+                self.busyFlags[current_frame] = 1
+            elif ctrlFlag == 2:
+                self.busyFlags[current_frame] = 0
+            
+            '''
+            if ctrlFlag == 1:
+                self.busyFlags[current_frame] = 1
+            elif ctrlFlag == 2:
+                self.busyFlags[current_frame] = 2
+            else:
+                self.busyFlags[current_frame] = 0
+            '''

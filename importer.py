@@ -502,7 +502,6 @@ class importCCS:
                 self.makeAction(streamChunk)
 
 
-
     def makeEffects(self, model, effClump, objClump, parentBone):
         
         #create camera for effects camera helper
@@ -608,7 +607,6 @@ class importCCS:
             matIndex = mat_slot.slot_index
 
         self.collection.objects.link(obj)
-
 
 
     def makeModels(self, model, clump, parentBone):
@@ -1529,7 +1527,57 @@ class importCCS:
                     #except:
                     #    print(f"Error at {targetShapeKey.name}")
 
- 
+
+        '''for camCtrl in anim.cameraControllers:
+            camCtrl: cameraController
+            ccsAnmCam = camCtrl.camera
+            cam = ccsAnmCam.name
+            
+            cameraObject = self.collection.objects.get(cam)
+
+            group_name = action.groups.new(name = cam).name
+
+            if cameraObject:
+                #create a separate action for each camera
+                #camera_action = bpy.data.actions.new(f"{anim.name} ({cam})")
+                camera_action = action
+                #apply the animation on the camera
+                cameraObject.animation_data_create()
+                cameraObject.animation_data.action = camera_action
+
+                #create a camera slot
+                #check if a slot already exists
+                try:
+                    slot = cameraObject.animation_data.action.slots[f"OB{cameraObject.name}"]
+                except:
+                    slot = cameraObject.animation_data.action.slots.new(id_type='OBJECT', name=cameraObject.name)
+
+                cameraObject.animation_data.action_slot = slot
+                channelbag = action.layers[0].strips[0].channelbag(slot)
+            
+                if channelbag:
+                    fcurves = channelbag.fcurves
+                else:
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+
+                bloc = Vector()
+                brot = Quaternion()
+                locations = self.convertVectorLocation(camCtrl.positions.items(), bloc, brot.inverted())
+                data_path = f'{"location"}'
+                #self.insertFrames(effect_action, group_name, data_path, locations, 3)
+                self.insertFrames(fcurves, group_name, data_path, locations, 3)
+                
+                #Rotations Euler
+                rotations = self.convertEulerRotation(camCtrl.rotationsEuler.items(), brot)
+                data_path = f'{"rotation_quaternion"}'
+                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
+                
+                #Rotations Quaternion
+                rotations_quat = self.convertQuaternionRotation(camCtrl.rotationsQuat.items(), brot)
+                data_path = f'{"rotation_quaternion"}'
+                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)'''
+
+
         for cam in anim.cameras.keys():
             cameraObject = self.collection.objects.get(cam)
 
@@ -1544,7 +1592,12 @@ class importCCS:
                 cameraObject.animation_data.action = camera_action
 
                 #create a camera slot
-                slot = cameraObject.animation_data.action.slots.new(id_type='OBJECT', name=cameraObject.name)
+                #check if a slot already exists
+                try:
+                    slot = cameraObject.animation_data.action.slots[f"OB{cameraObject.name}"]
+                except:
+                    slot = cameraObject.animation_data.action.slots.new(id_type='OBJECT', name=cameraObject.name)
+
                 cameraObject.animation_data.action_slot = slot
                 channelbag = action.layers[0].strips[0].channelbag(slot)
             
@@ -1570,6 +1623,7 @@ class importCCS:
 
                 data_path = f'{"data.lens"}'
                 self.insertFrames(fcurves, group_name, data_path, fovs, 1)
+
 
         for light in anim.lights.keys():
             if light == "Ambient":
@@ -1714,7 +1768,7 @@ class importCCS:
                 data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
 
-        
+
         for mat in anim.materials.keys():
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
             if bmats:
