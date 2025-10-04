@@ -94,9 +94,9 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         name="Version",
         items = [
             ('FILE',    "Use selected file's version", "CCS"),
-            ('0x121',   "Version 0x121",    "CCS"),
-            ('0x123',   "Version 0x123",    "CCS"),
-            ('0x131',   "Version 0x131",    "CCS"),
+            ('0x121',   "Version 0x121",            "CCS"),
+            ('0x123',   "Version 0x123",            "CCS"),
+            ('0x131',   "Version 0x131 (GU:LR)",    "CCS"),
         ],
         default = 'FILE',
         description = "Select the CCS version to export as. (Use selected file's version) by default."

@@ -1442,7 +1442,7 @@ class importCCS:
             
             startQuat = brot
             for frame, locrotscaleop in anim.objects[obj].items():
-                loc, rot, scale, opacity = locrotscaleop
+                loc, rot, scale, opacity, _, _, _ = locrotscaleop
 
                 loc = Vector(loc) * 0.01
                 bind_loc = Vector(bloc)
