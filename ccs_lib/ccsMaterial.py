@@ -16,15 +16,15 @@ class ccsMaterial(BrStruct):
         self.textureM = None
         self.version = 0
 
-        self.unk0 = 0
+        self.unk0 = [0, 0, 0, 0]
         self.unk1 = 0
         self.ambientColor = [0, 0, 0, 0]
         self.textureNormIndex = 0
-        self.normalMapParam = 0
+        self.normalStrength = 0
         self.unk2 = 0
         self.textureSpecIndex = 0
-        self.SpecularParam1 = 0
-        self.SpecularParam2 = 0
+        self.specularStrength = 0
+        self.specularShininess = 0
         self.textureMultiIndex = 0
         self.MultiTexParams = [0, 0, 0, 0]
         self.MultiTexUV = [0, 0, 0, 0]
@@ -46,15 +46,15 @@ class ccsMaterial(BrStruct):
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
             self.scaleY = br.read_int16() / 4096
-            self.unk0 = br.read_int32()
+            self.unk0 = br.read_uint8(4)
             self.unk1 = br.read_int32()
             self.ambientColor = br.read_uint8(4)
             self.textureNormIndex = br.read_uint32()
-            self.normalMapParam = br.read_float32()
+            self.normalStrength = br.read_float32()
             self.unk2 = br.read_int32()
             self.textureSpecIndex = br.read_uint32()
-            self.SpecularParam1 = br.read_float32()
-            self.SpecularParam2 = br.read_float32()
+            self.specularStrength = br.read_float32()
+            self.specularShininess = br.read_float32()
             self.textureMultiIndex = br.read_uint32()
             self.MultiTexParams = br.read_uint8(4)
             self.MultiTexUV = br.read_float32(4)
@@ -84,18 +84,21 @@ class ccsMaterial(BrStruct):
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
             br.write_uint16(int(self.scaleY * 4096))
-            br.write_int32(self.unk0)
+            br.write_uint8(self.unk0[0])
+            br.write_uint8(self.unk0[1])
+            br.write_uint8(self.unk0[2])
+            br.write_uint8(self.unk0[3])
             br.write_int32(self.unk1)
             br.write_uint8(self.ambientColor[0])
             br.write_uint8(self.ambientColor[1])
             br.write_uint8(self.ambientColor[2])
             br.write_uint8(self.ambientColor[3])
             br.write_uint32(self.textureNormIndex)
-            br.write_float32(self.normalMapParam)
+            br.write_float32(self.normalStrength)
             br.write_uint32(self.unk2)
             br.write_uint32(self.textureSpecIndex)
-            br.write_float32(self.SpecularParam1)
-            br.write_float32(self.SpecularParam2)
+            br.write_float32(self.specularStrength)
+            br.write_float32(self.specularShininess)
             br.write_uint32(self.textureMultiIndex)
             br.write_uint8(self.MultiTexParams)
             br.write_float32(self.MultiTexUV)
