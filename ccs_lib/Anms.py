@@ -702,7 +702,7 @@ class noteFrame(BrStruct):
 class directLightController(BrStruct):
     def __init__(self):
         self.lightObject = None
-        self.vec3f = {}         # positions ?
+        self.position = {}         # positions ?
         self.rotationsEuler = {}
         self.rotationsQuat = {}
         self.color = {}
@@ -710,18 +710,20 @@ class directLightController(BrStruct):
         self.float_1 = {}
         self.float_2 = {}
         self.float_3 = {}
+        self.float_4 = {}
 
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.lightIndex = br.read_uint32()
         self.ctrlFlags = br.read_uint32()
-        self.vec3f = readVector(br, self.vec3f, self.ctrlFlags, currentFrame)
+        self.position = readVector(br, self.vec3f, self.ctrlFlags, currentFrame)
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.color = readColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
-        self.float_0 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
-        self.float_1 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
-        self.float_2 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
-        self.float_3 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
+        self.float_0 = readFloat(br, self.float_0, self.ctrlFlags >> 0x9, currentFrame)
+        self.float_1 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
+        self.float_2 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
+        self.float_3 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
+        self.float_4 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
         br.write_uint32(self.lightIndex)
@@ -730,6 +732,7 @@ class directLightController(BrStruct):
         writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         writeColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
+        writeFloat(br, self.float_0, self.ctrlFlags >> 0x9, currentFrame)
         writeFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
         writeFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
         writeFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
@@ -739,11 +742,35 @@ class directLightController(BrStruct):
         self.lightObject = chunks[self.lightIndex]
         print(f"directLightController: {self.lightObject.name}, index: {self.lightIndex}")
 
+class directLightFrame(BrStruct):
+    def __init__(self):
+        self.frame = 0
+        self.lightIndex = 0
+        self.lightObject = None
+        self.position = (0, 0, 0)
+        self.rotation = (0, 0, 0)
+        self.color = (0, 0, 0, 1)
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.lightIndex = br.read_uint32()
+        self.lightObject = indexTable.Names[self.lightIndex][0]
+        self.name = indexTable.Names[self.lightIndex][0]
+        self.frame = currentFrame
+
+        self.flags = br.read_uint32()
+        self.position = br.read_float32(3)
+        self.rotation = br.read_float32(3)
+        self.color = br.read_uint8(4)
+        self.floats = br.read_float32(5)
+
+    def finalize(self, chunks):
+        self.lightObject = chunks[self.lightIndex]
+
 
 class spotLightController(BrStruct):
     def __init__(self):
         self.lightObject = None
-        self.vec3f = {}         # positions ?
+        self.position = {}
         self.rotationsEuler = {}
         self.rotationsQuat = {}
         self.color = {}
@@ -751,18 +778,20 @@ class spotLightController(BrStruct):
         self.float_1 = {}
         self.float_2 = {}
         self.float_3 = {}
+        self.float_4 = {}
 
     def __br_read__(self, br: BinaryReader, currentFrame):
         self.lightIndex = br.read_uint32()
         self.ctrlFlags = br.read_uint32()
-        self.vec3f = readVector(br, self.vec3f, self.ctrlFlags, currentFrame)
+        self.position = readVector(br, self.vec3f, self.ctrlFlags, currentFrame)
         self.rotationsEuler = readRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         self.rotationsQuat = readRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         self.color = readColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
-        self.float_0 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
-        self.float_1 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
-        self.float_2 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
-        self.float_3 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
+        self.float_0 = readFloat(br, self.float_0, self.ctrlFlags >> 0x9, currentFrame)
+        self.float_1 = readFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
+        self.float_2 = readFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
+        self.float_3 = readFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
+        self.float_4 = readFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
 
     def __br_write__(self, br: BinaryReader, currentFrame):
         br.write_uint32(self.lightIndex)
@@ -771,10 +800,10 @@ class spotLightController(BrStruct):
         writeRotationEuler(br, self.rotationsEuler, self.ctrlFlags >> 3, currentFrame)
         writeRotationQuat(br, self.rotationsQuat, self.ctrlFlags >> 3, currentFrame)
         writeColor(br, self.color, self.ctrlFlags >> 6, currentFrame)
-        writeFloat(br, self.float_1, self.ctrlFlags >> 0xc, currentFrame)
-        writeFloat(br, self.float_2, self.ctrlFlags >> 0xf, currentFrame)
-        writeFloat(br, self.float_3, self.ctrlFlags >> 0x12, currentFrame)
-        writeFloat(br, self.float_4, self.ctrlFlags >> 0x15, currentFrame)
+        writeFloat(br, self.float_0, self.ctrlFlags >> 0xc, currentFrame)
+        writeFloat(br, self.float_1, self.ctrlFlags >> 0xf, currentFrame)
+        writeFloat(br, self.float_2, self.ctrlFlags >> 0x12, currentFrame)
+        writeFloat(br, self.float_3, self.ctrlFlags >> 0x15, currentFrame)
 
     def finalize(self, chunks):
         self.lightObject = chunks[self.lightIndex]

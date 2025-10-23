@@ -1442,7 +1442,7 @@ class importCCS:
             
             startQuat = brot
             for frame, locrotscaleop in anim.objects[obj].items():
-                loc, rot, scale, opacity = locrotscaleop
+                loc, rot, scale, opacity, _, _, _ = locrotscaleop
 
                 loc = Vector(loc) * 0.01
                 bind_loc = Vector(bloc)
@@ -1630,7 +1630,7 @@ class importCCS:
                 ambient = anim.lights[light]
                 scene_manager = bpy.context.scene.ccs_manager
                 
-                #group_name = scene_action.groups.new(name = f"Ambient").name
+                group_name = scene_action.groups.new(name = f"Ambient").name
                 
                 ambient_color = {}
                 for frame, values in ambient.items():
@@ -1823,7 +1823,6 @@ class importCCS:
                 self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
                 self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
                 self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
-
 
 
     def makeEffectAction(self, effChunk):
