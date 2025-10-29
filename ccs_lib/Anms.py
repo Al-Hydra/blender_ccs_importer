@@ -890,7 +890,7 @@ def writeVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(vectorFrames))
         for f in vectorFrames:
-            br.write_uint32(f)
+            br.write_int32(f)
             br.write_float32(vectorFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in vectorFrames:
@@ -911,7 +911,7 @@ def writeRotationEuler(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(rotationFrames))
         for f in rotationFrames:
-            br.write_uint32(f)
+            br.write_int32(f)
             br.write_float32(rotationFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in rotationFrames:
@@ -930,7 +930,7 @@ def writeRotationQuat(br: BinaryReader, rotationFrames, ctrlFlags, currentFrame)
     if ctrlFlags & 7 == 4:
         br.write_uint32(len(rotationFrames))
         for f in rotationFrames:
-            br.write_uint32(f)
+            br.write_int32(f)
             br.write_float32(rotationFrames[f])
     return
 
@@ -948,7 +948,7 @@ def writeFloat(br: BinaryReader, floatFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(floatFrames))
         for f in floatFrames:
-            br.write_uint32(f)
+            br.write_int32(f)
             br.write_float32(floatFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in floatFrames:
@@ -969,7 +969,7 @@ def writeColor(br: BinaryReader, colorFrames, ctrlFlags, currentFrame):
     if ctrlFlags & 7 == 2:
         br.write_uint32(len(colorFrames))
         for f in colorFrames:
-            br.write_uint32(f)
+            br.write_int32(f)
             br.write_uint8(colorFrames[f])
     elif ctrlFlags & 7 == 1:
         for f in colorFrames:

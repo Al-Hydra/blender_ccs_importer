@@ -26,7 +26,7 @@ class ccsAnimation(BrStruct):
         br.write_uint32(self.frameCount)
         br.write_uint32(self.framesSectionSize)
 
-        #anmChunkWriter(self, br, indexTable, version)
+        #print(f'anmChunk index {self.index}')
         anmChunkWriter(self, br, version, sortedChunks)
 
 
