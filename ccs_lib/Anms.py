@@ -19,6 +19,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     self.omniLightControllers = []
     self.pcmFrames = {}
     self.lights = defaultdict(dict)
+    self.notes= defaultdict(dict)
+    self.celShadeParams = defaultdict(dict)
+    self.fBSBlurParam = defaultdict(dict)
     self.animationLoops = False
 
     def read_frame():
@@ -100,6 +103,14 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
         print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
 
+    def read_celShade_frame():
+        cel_f = br.read_struct(celShadeFrame, None, current_frame, indexTable)
+        print(f"Read chunk_type celShadeFrame with unknown data: {cel_f.name}, frame: {current_frame}")
+
+    def read_fBSBlur_frame():
+        fBSB_f = br.read_struct(fBSBlurFrame, None, current_frame, indexTable)
+        print(f"Read chunk_type fBSBlurFrame with unknown data: {fBSB_f.name}, frame: {current_frame}")
+
     # Dispatch table
     chunk_handlers = {
         CCSTypes.Frame: read_frame,
@@ -122,6 +133,8 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
         CCSTypes.OmniLightController: read_omni_light_Controller,
         CCSTypes.OmniLightFrame: read_omni_light_frame,
         CCSTypes.NoteFrame: read_note_frame,
+        CCSTypes.CelShadeFrame: read_celShade_frame,
+        CCSTypes.FBSBlurFrame: read_fBSBlur_frame,
     }
 
     # Main loop
@@ -873,6 +886,63 @@ class omniLightFrame(BrStruct):
 
     def finalize(self, chunks):
         self.lightObject = chunks[self.lightIndex]
+
+
+class celShadeFrame(BrStruct):
+    def __init__(self):
+        self.frame = 0
+        self.index = 0
+        self.celShadeParam = None
+        self.name = ""
+        self.flags = 0
+        self.floats = (0, 0)
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
+        self.frame = currentFrame
+        print(f'anmChunk celShadeFrame index {self.index}')
+        self.flags = br.read_uint32()
+
+        self.floats = br.read_float32(2)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.index)
+        br.write_uint32(self.flags)
+        br.write_float32(self.floats)
+
+    def finalize(self, chunks):
+        self.celShadeParam = chunks[self.index]
+
+
+class fBSBlurFrame(BrStruct):
+    def __init__(self):
+        self.frame = 0
+        self.index = 0
+        self.fBSBlurParam = None
+        self.name = ""
+        self.flags = 0
+        self.floats = (0, 0)
+        self.unk = (0, 0)
+
+    def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
+        self.index = br.read_uint32()
+        self.name = indexTable.Names[self.index][0]
+        self.frame = currentFrame
+        print(f'anmChunk fBSBlurParam index {self.index}')
+        self.flags = br.read_uint32()
+
+        self.floats = br.read_float32(2)
+        self.unk = br.read_uint32(2)
+
+    def __br_write__(self, br: BinaryReader, currentFrame):
+        br.write_uint32(self.index)
+        br.write_uint32(self.flags)
+        br.write_float32(self.floats)
+        br.write_uint32(self.unk)
+
+    def finalize(self, chunks):
+        self.fBSBlurParam = chunks[self.index]
 
 
 def readVector(br: BinaryReader, vectorFrames, ctrlFlags, currentFrame):

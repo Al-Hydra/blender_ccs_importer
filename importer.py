@@ -1630,7 +1630,8 @@ class importCCS:
                 ambient = anim.lights[light]
                 scene_manager = bpy.context.scene.ccs_manager
                 
-                group_name = scene_action.groups.new(name = f"Ambient").name
+                #group_name = scene_action.groups.new(name = f"Ambient").name
+                group_name = action.groups.new(name = f"Ambient").name
                 
                 ambient_color = {}
                 for frame, values in ambient.items():

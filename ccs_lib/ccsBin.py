@@ -16,7 +16,8 @@ class ccsBinary(BrStruct):
 
         # BIN_shade
             # uint32 == 0x100
-            # float32[2]
+            # float32
+            # byte[4]
             # byte[4]
 
         # BIN_filter
@@ -26,7 +27,7 @@ class ccsBinary(BrStruct):
             # uint32
             # uint32
 
-        # BIN_env  | BIN_stage_env
+        # BIN_env  | BIN_stage_env  | BIN_power_env
             # uint32 == 0x103 | 0x102
             # float32[3] ambientPlayer[B,G,R] / 255.0f
             # uint32[3]  ambient[B,G,R]    / 255
@@ -42,7 +43,6 @@ class ccsBinary(BrStruct):
             # uint32[4]
             # uint32[3]
 
-        # BIN_power_env
         # BIN_power_color
         
     def finalize(self, chunks):
