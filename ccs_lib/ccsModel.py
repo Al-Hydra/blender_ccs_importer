@@ -792,7 +792,7 @@ class ccsModel(BrStruct):
         self.parentBone = None
         self.vertexScale = 0
         self.modelType = 0
-        self.modelFlags = 0
+        self.modelFlags = 0     # & 0x8 = Outline enabled
         self.meshCount = 0
         self.sourceFactor = 0
         self.boundingBox = None
