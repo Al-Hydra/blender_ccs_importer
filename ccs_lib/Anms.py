@@ -101,15 +101,15 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
 
     def read_note_frame():
         note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
-        print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
+        #print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
 
     def read_celShade_frame():
         cel_f = br.read_struct(celShadeFrame, None, current_frame, indexTable)
-        print(f"Read chunk_type celShadeFrame with unknown data: {cel_f.name}, frame: {current_frame}")
+        #print(f"Read chunk_type celShadeFrame with unknown data: {cel_f.name}, frame: {current_frame}")
 
     def read_fBSBlur_frame():
         fBSB_f = br.read_struct(fBSBlurFrame, None, current_frame, indexTable)
-        print(f"Read chunk_type fBSBlurFrame with unknown data: {fBSB_f.name}, frame: {current_frame}")
+        #print(f"Read chunk_type fBSBlurFrame with unknown data: {fBSB_f.name}, frame: {current_frame}")
 
     # Dispatch table
     chunk_handlers = {
