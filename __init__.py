@@ -39,8 +39,8 @@ class CCS_UL_SceneMaterials(bpy.types.UIList):
 
 
 class CCS_SceneMaterial_OT_Add(bpy.types.Operator):
-    bl_idname = 'xfbin_mat.shader_add'
-    bl_label = 'Add Shader'
+    bl_idname = 'ccs_mat.add_material'
+    bl_label = 'Add Material'
 
     def execute(self, context):
         scene = context.scene
@@ -51,8 +51,8 @@ class CCS_SceneMaterial_OT_Add(bpy.types.Operator):
         return {'FINISHED'}
 
 class CCS_SceneMaterial_OT_Remove(bpy.types.Operator):
-    bl_idname = 'xfbin_mat.shader_remove'
-    bl_label = 'Remove Shader'
+    bl_idname = 'ccs_mat.remove_material'
+    bl_label = 'Remove Material'
 
     def execute(self, context):
         scene = context.scene
@@ -189,10 +189,10 @@ class ccsSceneManagerPanel(bpy.types.Panel):
         # list
         row.template_list("CCS_UL_SceneMaterials", "", manager, "ccs_materials", manager, "ccs_material_index")
         col = row.column(align=True)
-        col.operator("ccs_mat.shader_add", icon='ADD', text="")
-        col.operator("ccs_mat.shader_remove", icon='REMOVE', text="")
-        
-        
+        col.operator("ccs_mat.add_material", icon='ADD', text="")
+        col.operator("ccs_mat.remove_material", icon='REMOVE', text="")
+
+
         row = box.row()
         if manager.ccs_materials and manager.ccs_material_index >= 0:
             matprop: CCSSceneMaterialPropertyGroup = manager.ccs_materials[manager.ccs_material_index]
