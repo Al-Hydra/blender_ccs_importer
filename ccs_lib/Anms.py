@@ -102,6 +102,9 @@ def anmChunkReader(self, br: BinaryReader, indexTable, version):
     def read_note_frame():
         note_f = br.read_struct(noteFrame, None, current_frame, indexTable)
         print(f"Read chunk_type noteFrame with unknown data: {note_f.name}, frame: {current_frame}")
+        self.notes[note_f.name][current_frame] = (
+            note_f.unk1, note_f.unk2, note_f.objectIndex
+        )
 
     def read_celShade_frame():
         cel_f = br.read_struct(celShadeFrame, None, current_frame, indexTable)
@@ -207,7 +210,7 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                         obj_f.rotation = rot
                         obj_f.scale = scale
                         obj_f.opacity = opacity
-                        obj_f.has_model = has_model 
+                        obj_f.has_model = has_model
 
                         frame_type = 'ObjectFrame'
                         write_frameChunk(br, obj_f, frame_type, current_frame)
@@ -252,6 +255,21 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                             light_f.floats = unkf
                             frame_type = 'OmniLightFrame'
                             write_frameChunk(br, light_f, frame_type, current_frame)
+
+            for note_name, frames in self.notes.items():
+                #print(f"object_Name: {object_name}, frames.items() {frames.items()}")
+                for f, frame_data in frames.items():
+                    if current_frame == f:
+
+                        # Unpack Object frame_data
+                        unk1, unk2, index = frame_data
+                        note_f = noteFrame()
+                        note_f.objectIndex = index
+                        note_f.unk1 = unk1
+                        note_f.unk2 = unk2
+
+                        frame_type = 'NoteFrame'
+                        write_frameChunk(br, note_f, frame_type, current_frame)
 
             # Write frame
             anmFrame = frame()
@@ -694,8 +712,11 @@ class ambientFrame(BrStruct):
 class noteFrame(BrStruct):
     def __init__(self):
         self.frame = 0
+        self.objectIndex = 0
         self.object = None
         self.name = ""
+        self.unk1 = 0
+        self.unk2 = 0
 
     def __br_read__(self, br: BinaryReader, currentFrame, indexTable):
         self.objectIndex = br.read_uint32()
