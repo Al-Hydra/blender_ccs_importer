@@ -3,6 +3,7 @@ from .utils.PyBinaryReader.binary_reader import *
 class ccsMaterial(BrStruct):
     def __init__(self):
         self.name = ''
+        self.alternativeName = ''
         self.type = "Material"
         self.path = ''
         self.alpha = 1
@@ -44,6 +45,8 @@ class ccsMaterial(BrStruct):
         self.path = indexTable.Names[self.index][1]
 
         self.textureIndex = br.read_uint32()
+        self.textureName = indexTable.Names[self.textureIndex][0]
+        
         self.alpha = br.read_float32()
         if version > 0x130:
             self.version = version
@@ -143,6 +146,15 @@ class ccsMaterial(BrStruct):
 
     def finalize(self, chunks):
         self.texture = chunks.get(self.textureIndex)
+        
+        #we'll try to get the texture's clut chunk so we can use its name as an alt name for the material
+        if self.texture:
+            # check for clut
+            if self.texture.clutIndex:
+                clut = chunks.get(self.texture.clutIndex)
+                if clut and clut.name:
+                    self.alternativeName = clut.name
+        
         if self.version > 0x130:
             if self.textureNormIndex:
                 self.textureN = chunks.get(self.textureNormIndex)

@@ -816,8 +816,16 @@ class importCCS:
             mat = bpy.data.materials.get("ccsMaterial").copy()
             mat["uvOffset"] = [0, 0, 1, 1]
             return mat
+        
+        materialName = ccs_material.name
+        
+        if "clut" in materialName.lower():
+            if ccs_material.alternativeName:
+                materialName = ccs_material.alternativeName.replace("CLT", "MAT")
+            else:
+                materialName = f"{model.name}_{materialName}"
 
-        mat = bpy.data.materials.get(f'{model.name}_{ccs_material.name}')
+        mat = bpy.data.materials.get(materialName)
         if not mat:
             #check if ccsMaterial exists already
             mat = bpy.data.materials.get("ccsMaterial")
@@ -838,25 +846,28 @@ class importCCS:
                 mat = mat.copy()
                 mat["uvOffset"] = [0, 0, 1, 1]
             
-            mat.name = f'{model.name}_{ccs_material.name}'
+            mat.name = materialName
             
-            #add image texture
+            #we'll try to find the image if it exists already
             tex = ccs_material.texture
             img = None
-            if hasattr(tex, "name"):
-                img = bpy.data.images.get(tex.name)    
-                
-                if not img and tex.type == 'Texture' and tex.textureData:
-                    texture = tex.convertTexture()
+            if ccs_material.textureName:
+                img = bpy.data.images.get(ccs_material.textureName)
+            elif ccs_material.texture:
+                img = bpy.data.images.get(tex.name)
+            
+            
+            if not img and tex and tex.textureData:
+                texture = tex.convertTexture()
 
-                    img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
-                    img.pack(data=bytes(texture), data_len=len(texture))
-                    img.source = 'FILE'
-                
-                texture_node = mat.node_tree.nodes["ccsTexture"]
-                texture_node.image = img
+                img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                img.pack(data=bytes(texture), data_len=len(texture))
+                img.source = 'FILE'
+            
+            texture_node = mat.node_tree.nodes["ccsTexture"]
+            texture_node.image = img
 
-                mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+            mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
         else:
             mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
         
