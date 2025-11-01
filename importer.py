@@ -389,7 +389,7 @@ class importCCS:
                     refObjectClump = bpy.data.objects.get(extChunk.clump.name) if extChunk.clump else None
                     if refObjectClump:
                         #bObject.parent = refObjectClump
-                        bObject["clump"] = extChunk.clump.name 
+                        bObject["clump"] = extChunk.clump.name
 
                         if extChunk.parent:
                             #bObject.parent_type = "BONE"
@@ -406,6 +406,8 @@ class importCCS:
                             bObject["model"] = extChunk.name.replace("OBJ_", "MDL_")
                         
                         if extChunk.clump:
+                            '''if extChunk.object.model.name.startswith("MDL_1skw00t0 body"):
+                                breakpoint()'''
                             self.makeModels(extChunk.object.model, extChunk.clump, extChunk.name)
 
         
@@ -651,6 +653,18 @@ class importCCS:
                 obj.vertex_groups.new(name = armature.pose.bones[i].name)
                 bone_indices[armature.pose.bones[i].name] = i
             
+            # check the clump for external bones and update the lookup names
+            lookupNames = model.lookuplistnames.copy()
+            if lookupNames:
+                for bone in clump.bones.values():
+                    ext_object = bone.object
+                    if ext_object and ext_object.type == "ExternalObject":
+                        real_object = ext_object.object
+                        if real_object and real_object.name in lookupNames:
+                            #update the lookup name to the real object name
+                            index = lookupNames.index(real_object.name)
+                            lookupNames[index] = bone.name
+
             normals = []
             vCount = 0
             bm = bmesh.new()
@@ -674,7 +688,7 @@ class importCCS:
                     matIndex = mat_slot.slot_index
 
                 #meshdata = self.makeMeshSingleWeight(meshdata, mesh, parent, bone_indices, matIndex, normals) 
-                self.makeMeshMultiWeight(bm, model, mesh, bone_indices, matIndex, normals, clump, vgroup_layer, uv_layer, color_layer, vCount)                       
+                self.makeMeshMultiWeight(bm, model, mesh, bone_indices, lookupNames, matIndex, normals, clump, vgroup_layer, uv_layer, color_layer, vCount)                       
                 vCount = len(bm.verts)
             
             bm.to_mesh(meshdata)
@@ -802,8 +816,16 @@ class importCCS:
             mat = bpy.data.materials.get("ccsMaterial").copy()
             mat["uvOffset"] = [0, 0, 1, 1]
             return mat
+        
+        materialName = ccs_material.name
+        
+        if "clut" in materialName.lower():
+            if ccs_material.alternativeName:
+                materialName = ccs_material.alternativeName.replace("CLT", "MAT")
+            else:
+                materialName = f"{model.name}_{materialName}"
 
-        mat = bpy.data.materials.get(f'{model.name}_{ccs_material.name}')
+        mat = bpy.data.materials.get(materialName)
         if not mat:
             #check if ccsMaterial exists already
             mat = bpy.data.materials.get("ccsMaterial")
@@ -824,29 +846,32 @@ class importCCS:
                 mat = mat.copy()
                 mat["uvOffset"] = [0, 0, 1, 1]
             
-            mat.name = f'{model.name}_{ccs_material.name}'
+            mat.name = materialName
             
-            #add image texture
+            #we'll try to find the image if it exists already
             tex = ccs_material.texture
             img = None
-            if hasattr(tex, "name"):
-                img = bpy.data.images.get(tex.name)    
-                
-                if not img and tex.type == 'Texture' and tex.textureData:
-                    texture = tex.convertTexture()
+            if ccs_material.textureName:
+                img = bpy.data.images.get(ccs_material.textureName)
+            elif ccs_material.texture:
+                img = bpy.data.images.get(tex.name)
+            
+            
+            if not img and tex and tex.textureData:
+                texture = tex.convertTexture()
 
-                    img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
-                    img.pack(data=bytes(texture), data_len=len(texture))
-                    img.source = 'FILE'
-                
-                texture_node = mat.node_tree.nodes["ccsTexture"]
-                texture_node.image = img
+                img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
+                img.pack(data=bytes(texture), data_len=len(texture))
+                img.source = 'FILE'
+            
+            texture_node = mat.node_tree.nodes["ccsTexture"]
+            texture_node.image = img
 
-                mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
+            mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
         else:
             mat["uvOffset"] = [ccs_material.offsetX, ccs_material.offsetY, ccs_material.scaleX, ccs_material.scaleY]
         
-        mat.use_backface_culling = True
+        #mat.use_backface_culling = True
             
         return mat
 
@@ -880,7 +905,7 @@ class importCCS:
 
         # 2) Build faces using triangleFlag strip logic
         direction = 1
-        for i in range(2, pos0.shape[0]):
+        for i in range(pos0.shape[0]):
             f = int(flags[i])
             if f == 1:
                 direction = 1
@@ -989,14 +1014,17 @@ class importCCS:
 
         meshdata.normals_split_custom_set_from_vertices(normals)
         return meshdata
-    
-    def makeMeshMultiWeight(self, bm, model, mesh_np, bone_indices, matIndex, normals_out,
-                                clump, vgroup_layer, uv_layer, color_layer, vCount):
+
+    def makeMeshMultiWeight(self, bm, model, mesh_np, bone_indices, lookupNames, matIndex, normals_out,
+                            clump, vgroup_layer, uv_layer, color_layer, vCount):
         # 1) Bones list (same semantics as your original)
         if not model.lookupList:
             bones = [b for b in clump.bones.values()]
-        else:
+        else:   
             bones = [clump.bones[clump.boneIndices[i]] for i in model.lookupList]
+
+        
+        boneNameDict = {b.name: b for b in clump.bones.values()}
 
         V = mesh_np.vertices["positions"].shape[0]
         pos   = mesh_np.vertices["positions"]     # (V,4,3)
@@ -1007,7 +1035,18 @@ class importCCS:
         flags = mesh_np.vertices["triangleFlags"]  # (V,)
 
         # 2) Cache bone matrices/rotations once
-        bone_mats = [Matrix(b.matrix) for b in bones]         # 4x4
+        if lookupNames:
+            # use bone names to get the correct bones
+            bone_mats = []
+            for name in lookupNames:
+                bone = boneNameDict.get(name, None)
+                if bone:
+                    bone_mats.append(Matrix(bone.matrix))
+                else:
+                    bone_mats.append(Matrix.Identity(4))
+        else:
+            bone_mats = [Matrix(b.matrix) for b in bones]         # 4x4
+            
         bone_rot3 = [m.to_3x3() for m in bone_mats]           # 3x3
 
         # 3) Create verts (accumulated skinned position); collect bm verts in a list
@@ -1043,17 +1082,19 @@ class importCCS:
 
             # vertex groups / weights (write only non-zero)
             # map bone indices (into `bones`) -> group indices via name
+            boneNames = list(lookupNames) if lookupNames else [b.name for b in bones]
+            
             if ws[0] != 0.0:
-                gi = bone_indices[bones[ids[0]].name]
+                gi = bone_indices[boneNames[ids[0]]]
                 v[vgroup_layer][gi] = ws[0]
             if ws[1] != 0.0:
-                gi = bone_indices[bones[ids[1]].name]
+                gi = bone_indices[boneNames[ids[1]]]
                 v[vgroup_layer][gi] = ws[1]
             if ws[2] != 0.0:
-                gi = bone_indices[bones[ids[2]].name]
+                gi = bone_indices[boneNames[ids[2]]]
                 v[vgroup_layer][gi] = ws[2]
             if ws[3] != 0.0:
-                gi = bone_indices[bones[ids[3]].name]
+                gi = bone_indices[boneNames[ids[3]]]
                 v[vgroup_layer][gi] = ws[3]
 
         # 4) Faces: follow your triangleFlag/direction rules while we stream the strip
@@ -1194,13 +1235,19 @@ class importCCS:
         #create a strip
         action.layers[0].strips.new(type="KEYFRAME")
         #create a channelbag
-        action.slots.new(id_type='SCENE', name="CCS_Scene")
+        scene_action_slot = action.slots.new(id_type='SCENE', name="CCS_Scene")
         #apply the anim to the scene
         bpy.context.scene.animation_data_create()
         bpy.context.scene.animation_data.action = action
+
+        bpy.context.scene.animation_data.action_slot = scene_action_slot
+        
+        #add the action to the action list
+        new_scene_action = bpy.context.scene.ccs_manager.ccs_actions.add()
+        new_scene_action.name = anim.name
+        new_scene_action.action = action
         
         
-                
         #set fps to 30
         bpy.context.scene.render.fps = 30
 
@@ -1248,7 +1295,9 @@ class importCCS:
                     slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
                 except:
                     slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=armatureObj.name)
-                    
+                
+                
+                armatureObj.animation_data.action_slot = slot    
                 channelbag = action.layers[0].strips[0].channelbag(slot)
                 if channelbag:
                     fcurves = channelbag.fcurves
@@ -1393,7 +1442,8 @@ class importCCS:
                 slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
             except:
                 slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=armatureObj.name)
-                
+            
+            armatureObj.animation_data.action_slot = slot
             channelbag = action.layers[0].strips[0].channelbag(slot)
             if channelbag:
                 fcurves = channelbag.fcurves
@@ -1720,8 +1770,8 @@ class importCCS:
                             '''data_path = f'{"scale"}'
                             self.insertFrames(fcurves, group_name, data_path, scales, 3)'''
                             
-                            '''data_path = f'{"ccs_manager.lightdir_color"}'
-                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)'''
+                            data_path = f'{"ccs_manager.lightdir_color"}'
+                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
 
 
         for mat in anim.materialControllers:
@@ -1730,14 +1780,34 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
-                material_action = action #bpy.data.actions.new(f"{action.name} ({mat.name})")
+                '''material_action = action #bpy.data.actions.new(f"{action.name} ({mat.name})")
                 blender_mat.animation_data_create()
-                blender_mat.animation_data.action = material_action
+                blender_mat.animation_data.action = material_action'''
                 
-                #create a material slot
+                #we'll try to find the material in the scene manager
+                scene = bpy.context.scene
+                manager = scene.ccs_manager
+                ccs_scene_mat = manager.materials.get(blender_mat.name)
+                if ccs_scene_mat:
+                    #try to get its index
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                else:
+                    #add the material to the scene manager
+                    ccs_scene_mat = manager.ccs_materials.add()
+                    ccs_scene_mat.material = blender_mat
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                
+                
+                #get the uvOffsetNode
+                uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
+                uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
+                if uv_offset_node:
+                    uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
+                if uv_scale_node:
+                    uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
                 
                 #check if a slot already exists
-                try:
+                '''try:
                     slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
                 except:
                     slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
@@ -1748,7 +1818,7 @@ class importCCS:
                 if channelbag:
                     fcurves = channelbag.fcurves
                 else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves'''
                 
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
@@ -1760,15 +1830,35 @@ class importCCS:
                 scalesX = {f: [1 + scaleX_value - v] for f, v in mat.scaleX.items()}
                 scalesY = {f: [1 + scaleY_value - v] for f, v in mat.scaleY.items()}
                 
-                data_path = f'{"ccs_material.uvOffset"}'
+                '''data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
                 data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
                 data_path = f'{"ccs_material.uvOffset"}'
                 self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
                 data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
-
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)'''
+                
+                #we'll try to insert the frames in the scene manager material
+                scene = bpy.context.scene
+                manager = scene.ccs_manager
+                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
+                if ccs_scene_mat:
+                    #try to get its index
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                else:
+                    #add the material to the scene manager
+                    ccs_scene_mat = manager.ccs_materials.add()
+                    ccs_scene_mat.material = blender_mat
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                    
+                
+                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsX, 0)
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsY, 1)
+                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesX, 0)
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesY, 1)
 
         for mat in anim.materials.keys():
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
@@ -1776,9 +1866,39 @@ class importCCS:
                 blender_mat = bmats[0]
                 group_name = blender_mat.name
 
-                material_action = action
-                blender_mat.animation_data_create()
-                blender_mat.animation_data.action = material_action
+                #material_action = action
+                #blender_mat.animation_data_create()
+                #blender_mat.animation_data.action = material_action
+                
+                #we'll try to find the material in the scene manager
+                scene = bpy.context.scene
+                manager = scene.ccs_manager
+                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
+                if ccs_scene_mat:
+                    #try to get its index
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                else:
+                    #add the material to the scene manager
+                    ccs_scene_mat = manager.ccs_materials.add()
+                    ccs_scene_mat.material = blender_mat
+                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                
+                #get the uvOffsetNode useSceneManager
+                uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
+                uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
+                use_scene_manager_node = blender_mat.node_tree.nodes.get("useSceneManager")
+                if uv_offset_node:
+                    uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
+                if uv_scale_node:
+                    uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
+                if use_scene_manager_node:
+                    use_scene_manager_node.inputs[0].default_value = 1.0
+
+                #check if a slot already exists
+                '''try:
+                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
+                except:
+                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
                 
                 #check if a slot already exists
                 try:
@@ -1792,7 +1912,7 @@ class importCCS:
                 if channelbag:
                     fcurves = channelbag.fcurves
                 else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves'''
                 
                 
                 offsetX_value = blender_mat["uvOffset"][0]
@@ -1820,10 +1940,19 @@ class importCCS:
                     else:
                         scalesY[frame] = [1 + values[3] - scaleY_value]
                         
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
+                '''self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
                 self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
                 self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)
+                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)'''
+                
+                # insert the frames in the scene manager material
+                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsX, 0)
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsY, 1)
+                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesX, 0)
+                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesY, 1)
+
 
 
     def makeEffectAction(self, effChunk):
@@ -1908,7 +2037,8 @@ class importCCS:
         rotations = {}
         startQuat = brot
         for frame, rot in keyframes:
-            
+
+            #endQuat = brot.rotation_difference(Euler((radians(x) for x in rot), "ZYX").to_quaternion())
             endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
 
             if startQuat.dot(endQuat) < 0:
@@ -1921,8 +2051,17 @@ class importCCS:
     
 
     def convertQuaternionRotation(self, keyframes, brot):
-        #Rotations Quaternion
-        rotations = {keyframe : brot.rotation_difference(Quaternion((rotation[3], *rotation[:3])).inverted()) for keyframe, rotation in keyframes}
+        rotations = {}
+        startQuat = brot
+        for frame, rotation in keyframes:
+            quat = Quaternion((rotation[3], *rotation[:3]))
+            endQuat = brot.rotation_difference(quat.inverted())
+
+            if startQuat.dot(endQuat) < 0:
+                endQuat.negate()
+            
+            rotations[frame] = endQuat
+            startQuat = endQuat
 
         return rotations
 
@@ -1956,6 +2095,11 @@ class importCCS:
                     kp.interpolation = interpolation
 
                 fc.update()
+            
+            # set linear interpolation for all keyframes except the last one
+            for fc in fcurves:
+                for kp in fc.keyframe_points:
+                    kp.interpolation = interpolation
 
 
     def insertMaterialFrames(self, fcurves, group_name, data_path, values, index):
