@@ -36,7 +36,7 @@ class RigidMesh(BrStruct):
 
         # Normals + per-vertex flag: 3 * int8 + int8
         n_i8 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
-        normals0      = n_i8[:, :3].astype(np.float32) / np.float32(64.0)
+        normals0 = n_i8[:, :3].astype(np.float32) * (1.0 / 127.0)
         triangleFlags  = n_i8[:, 3].astype(np.int8, copy=False)
 
         # Allocate 4-slot containers
@@ -252,6 +252,7 @@ class DeformableMesh(BrStruct):
         #print(f'TotalVertexCount = {self.deformableVerticesCount}')
 
         finalScale = ((vertexScale / 256)  / 16) * 0.01
+        normalScale = 1.0 / 127.0
 
         #Single weight vertices
         if not self.deformableVerticesCount:
@@ -267,7 +268,7 @@ class DeformableMesh(BrStruct):
 
             # normals: int8 xyz, scaled
             n_i8 = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
-            normals0 = n_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            normals0 = n_i8[:, :3].astype(np.float32) * normalScale
             flags_i8 = n_i8[:, 3].astype(np.int8)  # triangle flags
 
             # 4-slot containers (SoA)
@@ -356,7 +357,7 @@ class DeformableMesh(BrStruct):
                 p0 = params[s0]
                 boneIDs[:, 0] = (p0 >> 10).astype(np.uint16)
                 weights[:, 0] = (p0 & 0x1FF).astype(np.float32) / np.float32(256.0)
-                normals[:, 0, :] = norm_i8[s0].astype(np.float32) / np.float32(64.0)
+                normals[:, 0, :] = norm_i8[s0].astype(np.float32) * normalScale
                 flags[:] = flags_i8[s0]
                 # slot 1 (only where present)
                 if has_second.any():
@@ -365,7 +366,7 @@ class DeformableMesh(BrStruct):
                     p1 = params[s1]
                     boneIDs[has_second, 1] = (p1 >> 10).astype(np.uint16)
                     weights[has_second, 1] = (p1 & 0x1FF).astype(np.float32) / np.float32(256.0)
-                    normals[has_second, 1, :] = norm_i8[s1].astype(np.float32) / np.float32(64.0)
+                    normals[has_second, 1, :] = norm_i8[s1].astype(np.float32) * normalScale
 
                 # UVs
                 if version > 0x125:
@@ -427,16 +428,16 @@ class DeformableMesh(BrStruct):
                         boneIDs[v, slot]   = np.uint16(bone_i16)
 
                         # normals + triangle flag (last seen wins)
-                        normals[v, slot] = (nx/64.0, ny/64.0, nz/64.0)
+                        normals[v, slot] = (nx * normalScale, ny * normalScale, nz * normalScale)
                         flags[v] = flag
 
                         # tangents / bitangents (assumed int8 packing like normals)
                         if tanBinFlag:
                             tx, ty, tz, ts = vt_raw[idx]
                             bx, by, bz, bs = vbn_raw[idx]
-                            tangents[v, slot]       = (tx/64.0, ty/64.0, tz/64.0)
+                            tangents[v, slot]       = (tx * normalScale, ty * normalScale, tz * normalScale)
                             tangent_sign[v, slot]   = ts   # keep raw sign/flag byte
-                            bitangents[v, slot]     = (bx/64.0, by/64.0, bz/64.0)
+                            bitangents[v, slot]     = (bx * normalScale, by * normalScale, bz * normalScale)
                             bitangent_sign[v, slot] = bs
 
                         stopBit = stop_i16
@@ -709,10 +710,11 @@ class unkMesh(BrStruct):
             count = br.read_uint32()
             vertexScale = br.read_float32()
             finalScale = ((vertexScale / 256)  / 16) * 0.01
+            normalScale = 1.0 / 127
             if sectionType == 0:
                 for i in range(count):
                     #vertex normals
-                    self.normals.append((br.read_int8() / 64, br.read_int8() / 64, br.read_int8() / 64))
+                    self.normals.append((br.read_int8() / normalScale, br.read_int8() / normalScale, br.read_int8() / normalScale))
             
             elif sectionType == 1:
                 #uvs
