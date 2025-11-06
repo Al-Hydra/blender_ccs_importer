@@ -857,7 +857,7 @@ class importCCS:
                 img = bpy.data.images.get(tex.name)
             
             
-            if not img and tex and tex.textureData:
+            if not img and tex and isinstance(tex, ccsTexture) and tex.textureData:
                 texture = tex.convertTexture()
 
                 img = bpy.data.images.new(tex.name, tex.width, tex.height, alpha=True)
@@ -905,7 +905,7 @@ class importCCS:
 
         # 2) Build faces using triangleFlag strip logic
         direction = 1
-        for i in range(pos0.shape[0]):
+        for i in range(2, pos0.shape[0]):
             f = int(flags[i])
             if f == 1:
                 direction = 1
@@ -915,28 +915,27 @@ class importCCS:
                 continue
 
             # f == 0 ? emit triangle
-            if i >= 2:
-                idxs = (i-2, i-1, i) if direction == 1 else (i, i-1, i-2)
-                try:
-                    face = bm.faces.new((bm_verts[idxs[0]], bm_verts[idxs[1]], bm_verts[idxs[2]]))
-                except ValueError:
-                    face = None  # already exists; safe to skip
+            idxs = (i-2, i-1, i) if direction == 1 else (i, i-1, i-2)
+            try:
+                face = bm.faces.new((bm_verts[idxs[0]], bm_verts[idxs[1]], bm_verts[idxs[2]]))
+            except ValueError:
+                face = None  # already exists; safe to skip
 
-                if face:
-                    face.material_index = matIndex
-                    face.smooth = True
+            if face:
+                face.material_index = matIndex
+                face.smooth = True
 
-                    # per-loop UV + color
-                    if uv_layer is not None and uvs is not None:
-                        for loop, vi in zip(face.loops, idxs):
-                            loop[uv_layer].uv = uvs[vi]
-                    if color_layer is not None and cols is not None:
-                        for loop, vi in zip(face.loops, idxs):
-                            c = cols[vi]  # uint8[4]
-                            loop[color_layer] = (c[0]/255.0, c[1]/255.0, c[2]/255.0, c[3]/255.0)
+                # per-loop UV + color
+                if uv_layer is not None and uvs is not None:
+                    for loop, vi in zip(face.loops, idxs):
+                        loop[uv_layer].uv = uvs[vi]
+                if color_layer is not None and cols is not None:
+                    for loop, vi in zip(face.loops, idxs):
+                        c = cols[vi]  # uint8[4]
+                        loop[color_layer] = (c[0]/255.0, c[1]/255.0, c[2]/255.0, c[3]/255.0)
 
-                    # flip for next face
-                    direction *= -1
+                # flip for next face
+                direction *= -1
 
 
     def makeMeshTriList(self, meshdata, model, mesh, bone_indices, parent_clump):
@@ -1017,7 +1016,7 @@ class importCCS:
 
     def makeMeshMultiWeight(self, bm, model, mesh_np, bone_indices, lookupNames, matIndex, normals_out,
                             clump, vgroup_layer, uv_layer, color_layer, vCount):
-        # 1) Bones list (same semantics as your original)
+
         if not model.lookupList:
             bones = [b for b in clump.bones.values()]
         else:   
@@ -1787,7 +1786,7 @@ class importCCS:
                 #we'll try to find the material in the scene manager
                 scene = bpy.context.scene
                 manager = scene.ccs_manager
-                ccs_scene_mat = manager.materials.get(blender_mat.name)
+                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
                 if ccs_scene_mat:
                     #try to get its index
                     ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)

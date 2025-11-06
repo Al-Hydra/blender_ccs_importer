@@ -112,7 +112,7 @@ ccsDict = {
     0x1200: "",
     0x1300: "ccsDummyPos",
     0x1400: "ccsDummyPosRot",
-    0x1700: "",
+    0x1700: "ccsLayer",
     0x1800: "",
     0x1801: "",
     0x1900: "ccsMorph",

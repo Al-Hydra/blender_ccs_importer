@@ -1,8 +1,10 @@
+from .ccsTexture import ccsTexture
 from .utils.PyBinaryReader.binary_reader import *
 
 class ccsMaterial(BrStruct):
     def __init__(self):
         self.name = ''
+        self.textureName = ''
         self.alternativeName = ''
         self.type = "Material"
         self.path = ''
@@ -148,7 +150,7 @@ class ccsMaterial(BrStruct):
         self.texture = chunks.get(self.textureIndex)
         
         #we'll try to get the texture's clut chunk so we can use its name as an alt name for the material
-        if self.texture:
+        if self.texture and isinstance(self.texture, ccsTexture):
             # check for clut
             if self.texture.clutIndex:
                 clut = chunks.get(self.texture.clutIndex)
