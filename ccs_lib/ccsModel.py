@@ -684,7 +684,7 @@ class DeformableMesh(BrStruct):
         self.material = chunks.get(self.materialIndex)
 
 
-class unkMesh(BrStruct):
+class triListMesh(BrStruct):
     def __init__(self):
         self.materialIndex = 0
         self.material = None
@@ -841,7 +841,7 @@ class ccsModel(BrStruct):
             
             elif self.modelType & ModelTypes.TrianglesList:
                 for i in range(self.meshCount):
-                    self.meshes.append(br.read_struct(unkMesh, None, self.vertexScale))
+                    self.meshes.append(br.read_struct(triListMesh, None, self.vertexScale))
 
             else:
                 for i in range(self.meshCount):
@@ -900,6 +900,9 @@ class ccsModel(BrStruct):
         if self.lookupList and self.clump:
             self.lookuplistnames = [chunks.get(self.clump.boneIndices[i]).name for i in self.lookupList]
             #print(f'lookuplistnames = {self.lookuplistnames}')
+
+        elif not self.lookupList and self.clump:
+            self.lookuplistnames = [bone.name for bone in self.clump.bones.values()]
 
         for mesh in self.meshes:
             mesh.finalize(chunks)

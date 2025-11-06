@@ -19,6 +19,7 @@ from .ccsEffect import ccsEffect
 from .ccsPCM import ccsPCM
 from .ccsParticleGenerator import ccsParticleGenerator
 from .ccsParticleAnmCtrl import ccsParticleAnmCtrl
+from .ccsLayer import ccsLayer
 from time import perf_counter
 from .Anms import *
 import os, gzip, zlib
