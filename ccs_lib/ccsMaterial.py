@@ -31,7 +31,7 @@ class ccsMaterial(BrStruct):
         self.textureMultiIndex = 0
         self.mTex_blendMode = 0
         self.MultiTexParam_unk1 = 0
-        self.mTex_uvMmode = 0
+        self.mTex_uvMode = 0
         self.MultiTexParam_unk3 = 0
         self.mTexUV_scaleX = 1
         self.mTexUV_scaleY = 1
@@ -136,7 +136,7 @@ class ccsMaterial(BrStruct):
             # Reserved unknown values
             for _ in range(9):
                 br.write_uint32(0)
-        elif version < 0x130 and version > 0x120:
+        elif version < 0x130 and version >= 0x120:
             br.write_uint16(int(self.offsetX * 4096))
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
