@@ -1721,7 +1721,7 @@ class importCCS:
                             energy = {}
                             color = {}
                             for frame, values in anim.lights[light].items():
-                                rot, col, en, _, _ = values
+                                rot, col, en = values[:3]
                                 rotations[frame] = [radians(r) for r in rot] 
                                 energy[frame] = [en]
                                 color[frame] = [c / 255 for c in col]
@@ -1741,8 +1741,12 @@ class importCCS:
                             #apply the animation on the light
                             lightObject.animation_data_create()
                             lightObject.animation_data.action = light_action
-                            #create a light slot
-                            slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+                            #check if a slot already exists
+                            try:
+                                slot = lightObject.animation_data.action.slots[f"OB{lightObject.name}"]
+                            except:
+                                slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+
                             lightObject.animation_data.action_slot = slot
                             
                             channelbag = action.layers[0].strips[0].channelbag(slot)
@@ -1754,23 +1758,37 @@ class importCCS:
                             
 
                             locations = {}
-                            rotations = {}
-                            #scales = {}
                             color = {}
+                            energy = {}
+                            radInner = {}
+                            radOuter = {}
+                            scales = {}
                             for frame, values in anim.lights[light].items():
-                                loc, col, unkf, _, _ = values
+                                loc, col, en, radi, rado = values[:5]
                                 locations[frame] = Vector(loc) * 0.01
-                                #scales[frame] = Vector(unkf) * 0.01
                                 color[frame] = [c / 255 for c in col]
+                                energy[frame] = [en]
+                                radInner[frame] = [radi]
+                                radOuter[frame] = [rado]
+                                scales[frame] =  Vector((rado * 2, rado * 2, rado * 2)) * 0.01
 
                             data_path = f'{"location"}'
                             self.insertFrames(fcurves, group_name, data_path, locations, 3)
-
-                            '''data_path = f'{"scale"}'
-                            self.insertFrames(fcurves, group_name, data_path, scales, 3)'''
                             
-                            data_path = f'{"ccs_manager.lightdir_color"}'
-                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
+                            data_path = f'{"lightomni_color"}'
+                            self.insertFrames(fcurves, group_name, data_path, color, 4)
+                        
+                            data_path = f'{"lightomni_intensity"}'
+                            self.insertFrames(fcurves, group_name, data_path, energy, 1)
+
+                            data_path = f'{"lightomni_range_inner"}'
+                            self.insertFrames(fcurves, group_name, data_path, radInner, 1)
+
+                            data_path = f'{"lightomni_range_outer"}'
+                            self.insertFrames(fcurves, group_name, data_path, radOuter, 1)
+
+                            data_path = f'{"scale"}'
+                            self.insertFrames(fcurves, group_name, data_path, scales, 3)
 
 
         for mat in anim.materialControllers:

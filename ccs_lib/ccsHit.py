@@ -27,8 +27,6 @@ class ccsHit(BrStruct):
         br.write_uint32(self.index)
 
         br.write_uint32(self.modelIndex)
-        br.write_string_index(self.modelName)
-        br.write_string_index(self.modelPath)
 
         br.write_uint32(self.hitMeshCount)
         br.write_uint32(self.totalVertexCount)
