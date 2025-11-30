@@ -65,6 +65,8 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'HIDDEN', 'SKIP_SAVE'})
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
 
+    color_tangents: BoolProperty(name = "visualize_tangents as color", default = False) #type: ignore
+
 
     removeWrongWeights: BoolProperty(
         name = "Remove incompatible vertex_groups", 
@@ -229,7 +231,8 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 mdlChunk.tangentBinormalsFlag = True
                 print(f'TODO: Export Tangents & Binormals')
                 blender_mesh.calc_tangents()
-                visualize_tangents(blender_mesh) # Create tangent visualization
+                if self.color_tangents:
+                    visualize_tangents(blender_mesh) # Create tangent visualization
             else:
                 mdlChunk.tangentBinormalsFlag = False
 

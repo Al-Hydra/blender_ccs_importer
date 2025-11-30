@@ -76,14 +76,18 @@ class RigidMesh(BrStruct):
             t_i8   = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
             b_i8   = np.frombuffer(br.read_bytes(self.vertexCount * 4), dtype='i1').reshape(self.vertexCount, 4)
 
-            tangents       = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
-            tangent_sign   = np.zeros((self.vertexCount, 4),    dtype=np.int8)
-            bitangents     = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
-            bitangent_sign = np.zeros((self.vertexCount, 4),    dtype=np.int8)
+            #tangents       = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            tangents       = np.zeros((self.vertexCount, 3), dtype=np.float32)
+            tangent_sign   = np.zeros((self.vertexCount, 4), dtype=np.int8)
+            #bitangents     = np.zeros((self.vertexCount, 4, 3), dtype=np.float32)
+            bitangents     = np.zeros((self.vertexCount, 3), dtype=np.float32)
+            bitangent_sign = np.zeros((self.vertexCount, 4), dtype=np.int8)
 
-            tangents[:, 0, :]     = t_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            #tangents[:, 0, :]     = t_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            tangents[:] =  t_i8[:, :3].astype(np.float32) * (1.0 / 127.0)
             tangent_sign[:, 0]    = t_i8[:, 3].astype(np.int8)
-            bitangents[:, 0, :]   = b_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            #bitangents[:, 0, :]   = b_i8[:, :3].astype(np.float32) / np.float32(64.0)
+            bitangents[:] =  b_i8[:, :3].astype(np.float32) * (1.0 / 127.0)
             bitangent_sign[:, 0]  = b_i8[:, 3].astype(np.int8)
 
         self.vertices =  {
@@ -883,6 +887,7 @@ class ccsModel(BrStruct):
                     br.write_struct(mesh, self.vertexScale, version, self.tangentBinormalsFlag)
             
             elif self.modelType == ModelTypes.ShadowMesh:
+                print(f'Write chunk index: {self.index} name: {self.name} ShadowMesh')
                 for mesh in self.meshes:
                     mesh: ShadowMesh
                     br.write_struct(mesh)
