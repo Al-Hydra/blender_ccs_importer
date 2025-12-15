@@ -54,8 +54,8 @@ class ccsTexture(BrStruct):
             self.height = self.btx.height
             self.textureData = self.btx.textureData
         else:
-            self.width = 1 << self.width
-            self.height = 1 <<self.height
+            self.width  = 1 << self.width
+            self.height = 1 << self.height
             self.unk4 = br.read_uint32()
             self.textureDataSize = br.read_uint32()
             self.textureData = br.read_bytes(self.textureDataSize << 2)

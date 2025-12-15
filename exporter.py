@@ -87,7 +87,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         ) #type: ignore
 
     tangentSpace: BoolProperty(
-        name = "Compress on export(Gzip)", 
+        name = "Export Tangents", 
         default = False,
         description = "Include Tangents & Bitangents in export (CCS version 0x131 only)"
         ) #type: ignore
@@ -95,10 +95,11 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
     ccs_versions: bpy.props.EnumProperty(
         name="Version",
         items = [
-            ('FILE',    "Use selected file's version", "CCS"),
-            ('0x121',   "Version 0x121",            "CCS"),
-            ('0x123',   "Version 0x123",            "CCS"),
-            ('0x131',   "Version 0x131 (GU:LR)",    "CCS"),
+            ('FILE',    "Use selected file's version",  "CCS"),
+            ('0x121',   "Version 0x121",                "CCS"),
+            ('0x123',   "Version 0x123",                "CCS"),
+            ('0x130',   "Version 0x130 (GU:LR)",        "CCS"),
+            ('0x131',   "Version 0x131 (GU:LR) multiTex", "CCS"),
         ],
         default = 'FILE',
         description = "Select the CCS version to export as. (Use selected file's version) by default."
@@ -111,6 +112,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             '0x121' : 0x121,
             '0x123' : 0x123,
             '0x125' : 0x125,
+            '0x130' : 0x130,
             '0x131' : 0x131,
         }
         return version_map[self.ccs_versions]
@@ -143,7 +145,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         if self.skipExport:
             self.removeWrongWeights = True
 
-        if self.selected_version == 0x131:
+        if self.selected_version >= 0x130:
             self.gzipOnExport = False
             box.prop(self, "tangentSpace", text = "Export Tangents & Bitangents") # TEST
         if self.selected_version != 0x131:
@@ -227,7 +229,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             blender_mesh = mesh_obj.data
             blender_mesh.calc_loop_triangles()
             
-            if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion == 0x131:
+            if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion >= 0x130:
                 mdlChunk.tangentBinormalsFlag = True
                 print(f'TODO: Export Tangents & Binormals')
                 blender_mesh.calc_tangents()
@@ -327,46 +329,26 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     # This will help in organizing triangles into meshes within the CCSF model
     tri_mat = {}
 
-    matList = {}  # To track materials and their corresponding CCSF material chunks
+    matList = {}  # Track materials and chunks in CCSF
     for tri in blender_mesh.loop_triangles:
         mat_idx = tri.material_index
-        print(f"mat_idx: {mat_idx}")
+        #print(f"mat_idx: {mat_idx}")
 
         if mat_idx not in tri_mat:
             tri_mat[mat_idx] = []
 
             tri_mat[mat_idx].append(tri)
-            # Create reference list for materials and their corresponding CCSF material chunks
+            # Create reference list for Blender Materials and CCSF Material chunks
             if mat_idx not in matList:
-                mdl_prefix = blender_mesh.name
-                print(f"mdl_prefix: {mdl_prefix}")
-                print(f"blender_mesh.materials: {blender_mesh.materials}")
-                if len(blender_mesh.materials) == 0:
-                    mat_name = blender_mesh.name.replace("MDL_", "MAT_")
-                else:
-                    bm_mat_name = blender_mesh.materials[mat_idx].name
-
-                    if bm_mat_name.startswith("MDL_"):
-                        mat_name = bm_mat_name.removeprefix(mdl_prefix + "_")
-                    elif bm_mat_name.startswith("MAT_"):
-                        mat_name = bm_mat_name
-                    else:
-                        mat_name = blender_mesh.name.replace("MDL_", "MAT_")
-
-                print(f"mdl_prefix: {mdl_prefix}, mat_name: {mat_name}")
-
-                ccsf_mat = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name), None)
-                if not ccsf_mat:
-                    self.report({'ERROR'}, "Matching CCSF material not found.")
-                    return {"CANCELLED"}
-                else:
-                    matChunk_idx = ccsf_mat.index
-                    print("Found matching CCSF material.")
+                matChunk = find_matChunk(self, blender_mesh, mat_idx, mdlChunk, ccsf)
+                if matChunk is None:
+                    return {'CANCELLED'}
         
-                matList[mat_idx] = (mat_name, matChunk_idx)
-                print(f"matList: {matList[mat_idx]}")
+                #matList[mat_idx] = (mat_namee, matChunk_idx)
+                matList[mat_idx] = (matChunk.name, matChunk.index)
+                print(f"matList: {matList[mat_idx]}") 
         else:
-            # Group triangles where vertices share the same material
+            # Group triangles that share the same material
             mat_idx = tri.material_index
             if mat_idx not in tri_mat:
                 tri_mat[mat_idx] = []
@@ -377,7 +359,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     for mat_idx in tri_mat:
     
         mesh = RigidMesh()
-        print(f"mat_idx: {mat_idx}")
+        #print(f"mat_idx: {mat_idx}")
 
         for i, tri in enumerate(tri_mat[mat_idx]):
             if len(blender_mesh.materials) == 0:
@@ -408,8 +390,8 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
                 norm = (bone_mtx_3x3 @ loop.normal).normalized()
                 tang = (bone_mtx_3x3 @ loop.tangent).normalized()
                 #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
-                lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-                bi = (bone_mtx_3x3 @ lBit).normalized()
+                loopBitangent = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                bi = (bone_mtx_3x3 @ loopBitangent).normalized()
                 triFlag = flags[l]
                 uv = uv_layer[loop_index].uv
                 col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -592,7 +574,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                 tri_weights_single.append(tri)
                 group_idx = group_indices[0]
                 mat_idx = tri.material_index
-                print(f"mat_idx: {mat_idx}")
+                #print(f"mat_idx: {mat_idx}")
 
                 if mat_idx not in tri_weights_single_mat_groups:
                     tri_weights_single_mat_groups[mat_idx] = {}
@@ -602,35 +584,15 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
                 tri_weights_single_mat_groups[mat_idx][group_idx].append(tri)
 
-                # Create reference list for materials and their corresponding CCSF material chunks
+                # Create reference list for Blender Materials and CCSF Material chunks
                 if mat_idx not in matList:
-                    mdl_prefix = blender_mesh.name
-                    print(f"mdl_prefix: {mdl_prefix}")
-                    print(f"blender_mesh.materials: {blender_mesh.materials}")
-                    if len(blender_mesh.materials) == 0:
-                        mat_name = blender_mesh.name.replace("MDL_", "MAT_")
-                    else:
-                        bm_mat_name = blender_mesh.materials[mat_idx].name
-
-                        if bm_mat_name.startswith("MDL_"):
-                            mat_name = bm_mat_name.removeprefix(mdl_prefix + "_")
-                        elif bm_mat_name.startswith("MAT_"):
-                            mat_name = bm_mat_name
-                        else:
-                            mat_name = blender_mesh.name.replace("MDL_", "MAT_")
-
-                    print(f"mdl_prefix: {mdl_prefix}, mat_name: {mat_name}")
-
-                    ccsf_mat = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name), None)
-                    if not ccsf_mat:
-                        self.report({'ERROR'}, "Matching CCSF material not found.")
-                        return {"CANCELLED"}
-                    else:
-                        matChunk_idx = ccsf_mat.index
-                        print("Found matching CCSF material.")
+                    matChunk = find_matChunk(self, blender_mesh, mat_idx, mdlChunk, ccsf)
+                    if matChunk is None:
+                        return {'CANCELLED'}
             
-                    matList[mat_idx] = (mat_name, matChunk_idx)
-                    print(f"matList: {matList[mat_idx]}")
+                    #matList[mat_idx] = (mat_namee, matChunk_idx)
+                    matList[mat_idx] = (matChunk.name, matChunk.index)
+                    print(f"matList: {matList[mat_idx]}") 
             else:
                 tri_weights_multi.append(tri)
                 # Group triangles where vertices share the same material
@@ -654,7 +616,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
 
             mesh = DeformableMesh()
             deformableVerticesCount = 0
-            print(f"mat_idx: {mat_idx}")
+            #print(f"mat_idx: {mat_idx}")
 
             for i, tri in enumerate(tri_weights_single_mat_groups[mat_idx][group_idx]):
                 if len(blender_mesh.materials) == 0:
@@ -690,12 +652,10 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     # prepare position, normal, tangent, bitangent
                     pos = bone_mtx @ v.co
                     norm = (bone_mtx_3x3 @ loop.normal).normalized()
-                    #tang = (bone_mtx_3x3.inverted() @ loop.tangent).normalized()
-                    #bi = (bone_mtx_3x3.inverted() @ loop.bitangent).normalized()
                     tang = (bone_mtx_3x3 @ loop.tangent).normalized()
                     #bi = (bone_mtx_3x3 @ loop.bitangent).normalized()
-                    lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-                    bi = (bone_mtx_3x3 @ lBit).normalized()
+                    loopBitangent = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                    bi = (bone_mtx_3x3 @ loopBitangent).normalized()
                     triFlag = flags[l]
                     uv = uv_layer[loop_index].uv
                     col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -805,8 +765,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     norm.append(tuple((bone_mtx_3x3[m] @ loop.normal).normalized()))
                     tang.append(tuple((bone_mtx_3x3[m] @ loop.tangent).normalized()))
                     #bi.append(tuple((bone_mtx_3x3[m] @ loop.bitangent).normalized()))
-                    lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
-                    bi.append(tuple((bone_mtx_3x3[m] @ lBit).normalized()))
+                    loopBitangent = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+                    bi.append(tuple((bone_mtx_3x3[m] @ loopBitangent).normalized()))
 
                 uv = uv_layer[loop_index].uv
                 col = [int(c * 255) for c in color_layer[loop_index].color_srgb]
@@ -879,6 +839,58 @@ def menu_func_export(self, context):
                         text='CyberConnect Streaming File (.ccs)')
 
 
+def find_matChunk(self, blender_mesh, mat_idx, mdlChunk, ccsf):
+    mat_name = ''
+    mat_name_alt = ''
+    mat_name_fallback = ''
+
+    # Try to find a Material from model in CCSF to use as a fallback if one can't be found
+    if mdlChunk.meshCount > 0 and mdlChunk.meshes[0].material:
+        mat_name_fallback = mdlChunk.meshes[0].material.name
+        self.report({'INFO'}, f"Set fallback Material for {blender_mesh.name}: {mat_name_fallback}")
+    else:
+        self.report({'WARNING'}, f"No fallback Material found for {blender_mesh.name} in CCS.")
+
+    # Try to match Materials from blender with Materials in CCSF
+    if not blender_mesh.materials:
+        # If no Material assigned in blender use model name
+        mat_name = blender_mesh.name.replace("MDL_", "MAT_")
+    else:
+        bm_mat_name = blender_mesh.materials[mat_idx].name
+
+        mdl_prefix = blender_mesh.name + "_"
+
+        if bm_mat_name.startswith("MAT_"):
+            mat_name = bm_mat_name
+        elif bm_mat_name.startswith(mdl_prefix):
+            mat_name = bm_mat_name.removeprefix(mdl_prefix)
+        else:
+            self.report({'WARNING'},
+                        f"Material {bm_mat_name} dosen't match name convention for CCS, will fallback to {mat_name_fallback}.")
+
+    # Set alternative Material name
+    mat_name_alt = mat_name.replace("MAT_", "CLT_")
+
+    print(f"mdl_prefix: {blender_mesh.name}, mat_name: {mat_name}, "
+          f"mat_name_alt: {mat_name_alt}, mat_name_fallback: {mat_name_fallback}")
+
+    matChunk = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name), None)
+    if matChunk:
+        self.report({'INFO'}, f"Found Material with name {mat_name} in CCS.")
+        return matChunk
+    
+    matChunk = next((m for m in ccsf.sortedChunks["Material"] if m.alternativeName == mat_name_alt), None)
+    if matChunk:
+        self.report({'INFO'}, f"Found Material with alternative name {mat_name_alt} in CCS.")
+        return matChunk
+    
+    matChunk = next((m for m in ccsf.sortedChunks["Material"] if m.name == mat_name_fallback), None)
+    if matChunk:
+        self.report({'INFO'}, f"Found Material with fallback name {mat_name_fallback} in CCS.")
+        return matChunk
+    
+    self.report({'ERROR'}, f"No Material found for {blender_mesh.name} in CCS.")
+    return None
 
 
 def visualize_tangents(mesh):
@@ -922,7 +934,7 @@ def visualize_tangents(mesh):
             domain="CORNER"
         )
 
-    # Normalize helper (map -1..1 → 0..1)
+    # Normalize helper (map -1..1 > 0..1)
     def vec_to_rgb(v):
         return (
             0.5 + 0.5 * v.x,
@@ -943,10 +955,10 @@ def visualize_tangents(mesh):
 
     # Write bitangents to color layer
     for i, loop in enumerate(mesh.loops):
-        bitangent = loop.bitangent.normalized()
-        lBit = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+        #bitangent = loop.bitangent.normalized()
         #bit_col_layer.data[i].color = vec_to_rgb(bitangent)
-        bit_col_layer.data[i].color = vec_to_rgb(lBit.normalized())
+        loopBitangent = loop.bitangent_sign * loop.normal.cross(loop.tangent)
+        bit_col_layer.data[i].color = vec_to_rgb(loopBitangent.normalized())
 
     mesh.update()
     print(f"Tangent visualization written to vertex colors: {tangent_layer_name}")
