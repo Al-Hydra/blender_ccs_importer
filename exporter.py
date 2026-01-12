@@ -152,7 +152,6 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             self.tangentSpace = False
         
     
-
     def execute(self, context):
         start_time = time()
 
@@ -226,8 +225,11 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 self.report({'INFO'}, f'Found model named {mesh_obj.name} in ccs file.')
 
             #print(f"mesh_obj: {mesh_obj}")
-            blender_mesh = mesh_obj.data
+            blender_mesh = mesh_obj.data.copy()
             blender_mesh.calc_loop_triangles()
+            blender_mesh.calc_normals_split()
+            #blender_mesh.calc_tangents(uvmap=uv_layer.name)
+            blender_mesh.calc_tangents()
             
             if mdlChunk.tangentBinormalsFlag or self.tangentSpace and exportVersion >= 0x130:
                 mdlChunk.tangentBinormalsFlag = True
@@ -246,11 +248,12 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             if not  blender_mesh.uv_layers:
                 blender_mesh.uv_layers.new(name="UV")
             uv_layer = blender_mesh.uv_layers[0].data
-            vertex_groups = mesh_obj.vertex_groups
+            #vertex_groups = mesh_obj.vertex_groups
 
 
             # Replace mesh data in model chunks
             if mdlChunk.modelType & ModelTypes.Deformable and not mdlChunk.modelType & ModelTypes.TrianglesList:
+                print(f'Preparing mdlChunk as DeformableMesh: {mdlChunk.name}')
                 exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
                 #print(f'Exported mdlChunk as DeformableMesh: {mdlChunk.name}')
 
@@ -261,10 +264,11 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
                 print(f'TODO: Export TrianglesList')
 
             else:
-                print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
+                print(f'Preparing mdlChunk as RigidMesh: {mdlChunk.name}')
                 exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
                 #print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
-                
+
+        bpy.data.meshes.remove(blender_mesh) 
 
         elapsed = time() - start_time
         msg = f"Exported in {elapsed:.2f}s"
@@ -292,9 +296,11 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     
     # Remove incompatible vertex groups from rigid mesh in Blender
     if self.removeWrongWeights:
+        # Rigid Models can only use 1 Vertex Group named the same as Bone Name others should be removed
         for vg in vertex_groups:
             if vg.name != bone_name:
                 vertex_groups.remove(vg)
+                print(f"Rigid Model {blender_mesh.name}: Removed incompatible vertex group {vg.name}.")
             
     # Assign bone reference for mdlChunk to rigid mesh
     if not mesh_obj.vertex_groups:
@@ -383,7 +389,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
                 loop = blender_mesh.loops[loop_index]
                 v_idx = loop.vertex_index
                 v = blender_mesh.vertices[v_idx]
-                bm_vert = bm.verts[v_idx]
+                #bm_vert = bm.verts[v_idx]
                 
                 # prepare position, normal, tangent, bitangent
                 pos = bone_mtx @ v.co
@@ -441,16 +447,19 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
     # Get vertex_groups from mesh object
     vertex_groups = mesh_obj.vertex_groups
 
+    # Not evey bone can be used by Deformable Models
     # Remove incompatible vertex groups not in cmpChunk.bones &/or mdlChunk.lookupList
     if self.removeWrongWeights:
         for vg in vertex_groups:
             if vg.name not in bone_names:
                 vertex_groups.remove(vg)
+                print(f"Deformable Model {blender_mesh.name}: Removed incompatible vertex group {vg.name}.")
 
-    # Add missing compatible vertex groups to mesh from cmpChunk.bones &/or mdlChunk.lookupList
+    # Add missing compatible vertex groups to blender mesh from cmpChunk.bones &/or mdlChunk.lookupList
     for bn in bone_names:
         if vertex_groups.get(bn) is None:
             mesh_obj.vertex_groups.new(name=bn)
+            print(f"Deformable Model {blender_mesh.name}: Added missing compatible vertex group {vg.name}.")
 
     # Show remaning vertex groups
     #self.report({'INFO'}, f"{mdlChunk.name}: Remaining groups: {[vg.name for vg in vertex_groups]}.")
@@ -625,7 +634,7 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     mat_name = blender_mesh.materials[tri.material_index].name
 
                 matChunk_idx = matList[tri.material_index][1]
-                print(f"matChunk_idx: {matChunk_idx}")
+                #print(f"matChunk_idx: {matChunk_idx}")
 
                 # Single trianle flags layout
                 # Read from end
