@@ -27,8 +27,6 @@ class ccsHit(BrStruct):
         br.write_uint32(self.index)
 
         br.write_uint32(self.modelIndex)
-        br.write_string_index(self.modelName)
-        br.write_string_index(self.modelPath)
 
         br.write_uint32(self.hitMeshCount)
         br.write_uint32(self.totalVertexCount)
@@ -44,27 +42,31 @@ class hitMesh(BrStruct):
     def __br_read__(self, br: BinaryReader):
         self.vertexCount = br.read_uint32()
         self.hitParams = br.read_uint32()
-        self.verticesSet1 = [br.read_float32(3) for i in range(self.vertexCount)]
-        self.verticesSet2 = [br.read_float32(3) for i in range(self.vertexCount)]
+        #self.verticesSet1 = [br.read_float32(3) for i in range(self.vertexCount)]
+        self.verticesSet1 = [br.read_struct(hitVertex) for i in range(self.vertexCount)]
+        #self.verticesSet2 = [br.read_float32(3) for i in range(self.vertexCount)]
+        self.verticesSet2 = [br.read_struct(hitVertex) for i in range(self.vertexCount)]
 
     def __br_write__(self, br: BinaryReader):
         br.write_uint32(self.vertexCount)
         br.write_uint32(self.hitParams)
 
         for v in self.verticesSet1:
-            br.write_float32(v)
+            #br.write_float32(v)
+            br.write_struct(v)
 
         for v in self.verticesSet2:
-            br.write_float32(v)
+            #br.write_float32(v)
+            br.write_struct(v)
 
 
 class hitVertex(BrStruct):
     def __br_read__(self, br: BinaryReader):
-        self.X = br.read_float32()
-        self.Y = br.read_float32()
-        self.Z = br.read_float32()
+        self.X = br.read_float32() * 0.01
+        self.Y = br.read_float32() * 0.01
+        self.Z = br.read_float32() * 0.01
 
     def __br_write__(self, br: BinaryReader):
-        br.write_float32(self.X)
-        br.write_float32(self.Y)
-        br.write_float32(self.Z)
+        br.write_float32(self.X / 0.01)
+        br.write_float32(self.Y / 0.01)
+        br.write_float32(self.Z / 0.01)

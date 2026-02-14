@@ -84,6 +84,7 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
     effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
+    import_hitMesh: BoolProperty(name = "Import Hit Meshes", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -173,6 +174,11 @@ class CCS_IMPORTER_OT_IMPORT(bpy.types.Operator, ImportHelper):
         row = layout.row()
         row.prop(self, "import_lights")
         
+        row = layout.row()
+        row.prop(self, "import_shadow")
+        row = layout.row()
+        row.prop(self, "import_hitMesh")
+        
 
         row = layout.row()
         row.prop(self, "swap_names")
@@ -226,7 +232,7 @@ class DropCCS(Operator):
     target_skeleton: StringProperty(name = "Target Armature") #type: ignore
     slice_name: BoolProperty(name = "Slice Names", default = False) #type: ignore
     slice_count: IntProperty(name = "Slice Count", default = 0) #type: ignore
-    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = True) #type: ignore
+    import_shadow: BoolProperty(name = "Import Shadow Meshes", default = False) #type: ignore
     find_missing_chunks: BoolProperty(name = "Find Missing Chunks", default = False) #type: ignore
     import_models: BoolProperty(name = "Import Models", default = True) #type: ignore
     import_animations: BoolProperty(name = "Import Animations", default = True) #type: ignore
@@ -237,6 +243,7 @@ class DropCCS(Operator):
     import_lights: BoolProperty(name = "Import Lights", default = True) #type: ignore
     import_effects: BoolProperty(name = "Import Effects", default = True) #type: ignore
     effects_track_camera: BoolProperty(name = "Effects tack to (Deafult_Camera)", default = False) #type: ignore
+    import_hitMesh: BoolProperty(name = "Import Hit Meshes", default = True) #type: ignore
 
     
     def execute(self, context):
@@ -377,6 +384,10 @@ class importCCS:
                 if objChunk.model:
                     bObject["model"] = objChunk.model.name
                     self.makeModels(objChunk.model, objChunk.clump, objChunk.name)
+                
+                if objChunk.shadow:
+                    bObject["shadow"] = objChunk.model.name
+                    self.makeModels(objChunk.shadow, objChunk.clump, objChunk.name)
 
 
             #External Objects/ References
@@ -489,6 +500,53 @@ class importCCS:
                     
                         lightObject = bLight
                     self.collection.objects.link(lightObject)
+
+
+        if self.import_hitMesh:
+            # Hit Models
+            for hitChunk in self.ccsf.sortedChunks["HitModel"]:
+                hit_name = hitChunk.name
+                print(f'hitChunk.name {hit_name}')
+                for i, mesh in enumerate(hitChunk.hitMeshes):
+                    tri_count = mesh.vertexCount // 3
+
+                    # verticesSet1
+                    bm = bmesh.new()
+                    verts1 = [bm.verts.new((v.X, v.Y, v.Z)) for v in mesh.verticesSet1]
+                    #print(f'mesh.verticesSet1 {mesh.verticesSet1}')
+                    bm.verts.ensure_lookup_table()
+
+                    for tri in range(tri_count):
+                        v = tri * 3
+                        bm.faces.new((verts1[v + 0], verts1[v + 1], verts1[v + 2]))
+
+                    bm.faces.ensure_lookup_table()                       
+
+                    blender_mesh = bpy.data.meshes.new(f'{hit_name}_{i}_set1')
+                    bm.to_mesh(blender_mesh)
+
+                    obj = bpy.data.objects.new(f'{hit_name}_{i}_set1', blender_mesh)
+                    self.collection.objects.link(obj)
+
+                    '''
+                    # verticesSet2
+                    bm = bmesh.new()
+                    verts2 = [bm.verts.new((v.X, v.Y, v.Z)) for v in mesh.verticesSet2]
+                    #print(f'mesh.verticesSet2 {mesh.verticesSet2}')
+                    bm.verts.ensure_lookup_table()
+
+                    for tri in range(tri_count):
+                        v = tri * 3
+                        bm.faces.new((verts2[v + 0], verts2[v + 1], verts2[v + 2]))
+
+                    bm.faces.ensure_lookup_table()                       
+
+                    blender_mesh = bpy.data.meshes.new(f'{hit_name}_{i}_set2')
+                    bm.to_mesh(blender_mesh)
+
+                    obj = bpy.data.objects.new(f'{hit_name}_{i}_set2', blender_mesh)
+                    self.collection.objects.link(obj)
+                    '''
 
 
         if self.import_animations:
@@ -612,24 +670,25 @@ class importCCS:
 
 
     def makeModels(self, model, clump, parentBone):
-        model_name = parentBone.replace("OBJ_", "MDL_")
+        model_name =  parentBone.replace("OBJ_", "MDL_")
         if model == None or model.type != 'Model':
             return
 
         if model.modelType & 8 and self.import_shadow:
+            shadow_name = model.name
             for i, mesh in enumerate(model.meshes):
                 bm = bmesh.new()
 
-                verts = [bm.verts.new(v.position) for v in mesh.vertices]
+                verts = [bm.verts.new(v) for v in mesh.vertices]
                 bm.verts.ensure_lookup_table()
                 
                 triangles = [bm.faces.new((verts[t[0]], verts[t[1]], verts[t[2]])) for t in mesh.triangles]
                 bm.faces.ensure_lookup_table()                        
 
-                blender_mesh = bpy.data.meshes.new(f'{model_name}')
+                blender_mesh = bpy.data.meshes.new(f'{shadow_name}')
                 bm.to_mesh(blender_mesh)
 
-                obj = bpy.data.objects.new(f'{model_name}', blender_mesh)
+                obj = bpy.data.objects.new(f'{shadow_name}', blender_mesh)
                 self.collection.objects.link(obj)
         
 
@@ -1721,7 +1780,7 @@ class importCCS:
                             energy = {}
                             color = {}
                             for frame, values in anim.lights[light].items():
-                                rot, col, en, _, _ = values
+                                rot, col, en = values[:3]
                                 rotations[frame] = [radians(r) for r in rot] 
                                 energy[frame] = [en]
                                 color[frame] = [c / 255 for c in col]
@@ -1741,8 +1800,12 @@ class importCCS:
                             #apply the animation on the light
                             lightObject.animation_data_create()
                             lightObject.animation_data.action = light_action
-                            #create a light slot
-                            slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+                            #check if a slot already exists
+                            try:
+                                slot = lightObject.animation_data.action.slots[f"OB{lightObject.name}"]
+                            except:
+                                slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
+
                             lightObject.animation_data.action_slot = slot
                             
                             channelbag = action.layers[0].strips[0].channelbag(slot)
@@ -1754,23 +1817,37 @@ class importCCS:
                             
 
                             locations = {}
-                            rotations = {}
-                            #scales = {}
                             color = {}
+                            energy = {}
+                            radInner = {}
+                            radOuter = {}
+                            scales = {}
                             for frame, values in anim.lights[light].items():
-                                loc, col, unkf, _, _ = values
+                                loc, col, en, radi, rado = values[:5]
                                 locations[frame] = Vector(loc) * 0.01
-                                #scales[frame] = Vector(unkf) * 0.01
                                 color[frame] = [c / 255 for c in col]
+                                energy[frame] = [en]
+                                radInner[frame] = [radi]
+                                radOuter[frame] = [rado]
+                                scales[frame] =  Vector((rado * 2, rado * 2, rado * 2)) * 0.01
 
                             data_path = f'{"location"}'
                             self.insertFrames(fcurves, group_name, data_path, locations, 3)
-
-                            '''data_path = f'{"scale"}'
-                            self.insertFrames(fcurves, group_name, data_path, scales, 3)'''
                             
-                            data_path = f'{"ccs_manager.lightdir_color"}'
-                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
+                            data_path = f'{"lightomni_color"}'
+                            self.insertFrames(fcurves, group_name, data_path, color, 4)
+                        
+                            data_path = f'{"lightomni_intensity"}'
+                            self.insertFrames(fcurves, group_name, data_path, energy, 1)
+
+                            data_path = f'{"lightomni_range_inner"}'
+                            self.insertFrames(fcurves, group_name, data_path, radInner, 1)
+
+                            data_path = f'{"lightomni_range_outer"}'
+                            self.insertFrames(fcurves, group_name, data_path, radOuter, 1)
+
+                            data_path = f'{"scale"}'
+                            self.insertFrames(fcurves, group_name, data_path, scales, 3)
 
 
         for mat in anim.materialControllers:

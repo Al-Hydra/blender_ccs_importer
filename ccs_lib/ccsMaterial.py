@@ -18,27 +18,30 @@ class ccsMaterial(BrStruct):
         self.textureS = None
         self.textureM = None
         self.version = 0
-
-        self.unk0 = [0, 0, 0, 0]
-        self.unk1 = 0
+        self.useCharaShader = False
+        self.forceOutputColor = [0, 0, 0, 0]
+        #cullModes: 0=deafualt, 1=back, 2=front
+        self.cullMode = 0       
         self.ambientColor = [0, 0, 0, 0]
         self.textureNormIndex = 0
         self.normalStrength = 0
-        self.unk2 = 0
+        self.useSpecular = 0
+        self.debugSpecular = 0
         self.textureSpecIndex = 0
         self.specularStrength = 0
         self.specularShininess = 0
         self.textureMultiIndex = 0
         self.mTex_blendMode = 0
         self.MultiTexParam_unk1 = 0
-        self.mTex_uvMmode = 0
+        # mTex_uvModes: 0=UVs, 1=UV from Reflection view, 2=UV from view pos, 3=UV from world normal, 4=UV from world pos
+        self.mTex_uvMode = 0           
         self.MultiTexParam_unk3 = 0
         self.mTexUV_scaleX = 1
         self.mTexUV_scaleY = 1
         self.mTexUV_offsetX = 0
         self.mTexUV_offsetY = 0
-        self.mTexUV_speed = [0, 0]
-        self.EmissionColor = [0, 0, 0, 0]
+        self.mTexUV_speed   = [0, 0]
+        self.EmissionColor  = [0, 0, 0, 0]
 
 
     def __br_read__(self, br: BinaryReader, indexTable, version):
@@ -50,39 +53,35 @@ class ccsMaterial(BrStruct):
         self.textureName = indexTable.Names[self.textureIndex][0]
         
         self.alpha = br.read_float32()
-        if version > 0x130:
-            self.version = version
+        if version >= 0x130:
+            self.useCharaShader = True
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
             self.scaleY = br.read_int16() / 4096
-            self.unk0 = br.read_uint8(4)
-            self.unk1 = br.read_int32()
-            self.ambientColor = br.read_uint8(4)
+            self.forceOutputColor = br.read_uint8(4)
+            if self.forceOutputColor == [0, 0, 0, 0]:
+                self.useCharaShader = False
+            self.cullMode      = br.read_int32()
+            self.ambientColor  = br.read_uint8(4)
             self.textureNormIndex = br.read_uint32()
             self.normalStrength = br.read_float32()
-            self.unk2 = br.read_int32()
+            self.useSpecular    = br.read_uint16()
+            self.debugSpecular  = br.read_uint16()
             self.textureSpecIndex = br.read_uint32()
             self.specularStrength = br.read_float32()
             self.specularShininess = br.read_float32()
-            self.textureMultiIndex = br.read_uint32()
-            self.mTex_blendMode = br.read_uint8()
-            self.MultiTexParam_unk1 = br.read_uint8()
-            self.mTex_uvMode = br.read_uint8()
-            self.MultiTexParam_unk3 = br.read_uint8()
-            self.mTexUV_scaleX = br.read_float32()
-            self.mTexUV_scaleY = br.read_float32()
-            self.mTexUV_offsetX = br.read_float32()
-            self.mTexUV_offsetY = br.read_float32()
-            self.mTexUV_speed = br.read_float32(2)
-            self.EmissionColor = br.read_uint8(4)
-        elif version == 0x130:
-            self.offsetX = br.read_int16() / 4096
-            self.offsetY = br.read_int16() / 4096
-            self.scaleX = br.read_int16() / 4096
-            self.scaleY = br.read_int16() / 4096
-            self.values = br.read_int32(9)
-        elif version < 0x130 and version > 0x120:
+            if version > 0x130:
+                self.textureMultiIndex = br.read_uint32()
+                self.mTex_blendMode = br.read_uint16()
+                self.mTex_uvMode    = br.read_uint16()
+                self.mTexUV_scaleX  = br.read_float32()
+                self.mTexUV_scaleY  = br.read_float32()
+                self.mTexUV_offsetX = br.read_float32()
+                self.mTexUV_offsetY = br.read_float32()
+                self.mTexUV_speed   = br.read_float32(2)
+                self.EmissionColor  = br.read_uint8(4)
+        elif version < 0x130 and version >= 0x120:
             self.offsetX = br.read_int16() / 4096
             self.offsetY = br.read_int16() / 4096
             self.scaleX = br.read_int16() / 4096
@@ -96,47 +95,38 @@ class ccsMaterial(BrStruct):
         br.write_uint32(self.index)
         br.write_uint32(self.textureIndex)
         br.write_float32(self.alpha)
-        if version > 0x130:
+        if version >= 0x130:
             br.write_uint16(int(self.offsetX * 4096))
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
             br.write_uint16(int(self.scaleY * 4096))
-            br.write_uint8(self.unk0[0])
-            br.write_uint8(self.unk0[1])
-            br.write_uint8(self.unk0[2])
-            br.write_uint8(self.unk0[3])
-            br.write_int32(self.unk1)
+            br.write_uint8(self.forceOutputColor[0])
+            br.write_uint8(self.forceOutputColor[1])
+            br.write_uint8(self.forceOutputColor[2])
+            br.write_uint8(self.forceOutputColor[3])
+            br.write_int32(self.cullMode)
             br.write_uint8(self.ambientColor[0])
             br.write_uint8(self.ambientColor[1])
             br.write_uint8(self.ambientColor[2])
             br.write_uint8(self.ambientColor[3])
             br.write_uint32(self.textureNormIndex)
             br.write_float32(self.normalStrength)
-            br.write_uint32(self.unk2)
+            br.write_uint16(self.useSpecular)
+            br.write_uint16(self.debugSpecular)
             br.write_uint32(self.textureSpecIndex)
             br.write_float32(self.specularStrength)
             br.write_float32(self.specularShininess)
-            br.write_uint32(self.textureMultiIndex)
-            br.write_uint8(self.mTex_blendMode)
-            br.write_uint8(self.MultiTexParam_unk1)
-            br.write_uint8(self.mTex_uvMode)
-            br.write_uint8(self.MultiTexParam_unk3)
-            br.write_float32(self.mTexUV_scaleX)
-            br.write_float32(self.mTexUV_scaleY)
-            br.write_float32(self.mTexUV_offsetX)
-            br.write_float32(self.mTexUV_offsetY)
-            br.write_float32(self.mTexUV_speed)
-            br.write_uint8(self.EmissionColor)
-        elif version == 0x130:
-            br.write_uint16(int(self.offsetX * 4096))
-            br.write_uint16(int(self.offsetY * 4096))
-            br.write_uint16(int(self.scaleX * 4096))
-            br.write_uint16(int(self.scaleY * 4096))
-            #br.write_bytes(self.values)
-            # Reserved unknown values
-            for _ in range(9):
-                br.write_uint32(0)
-        elif version < 0x130 and version > 0x120:
+            if version > 0x130:
+                br.write_uint32(self.textureMultiIndex)
+                br.write_uint16(self.mTex_blendMode)
+                br.write_uint16(self.mTex_uvMode)
+                br.write_float32(self.mTexUV_scaleX)
+                br.write_float32(self.mTexUV_scaleY)
+                br.write_float32(self.mTexUV_offsetX)
+                br.write_float32(self.mTexUV_offsetY)
+                br.write_float32(self.mTexUV_speed)
+                br.write_uint8(self.EmissionColor)
+        elif version < 0x130 and version >= 0x120:
             br.write_uint16(int(self.offsetX * 4096))
             br.write_uint16(int(self.offsetY * 4096))
             br.write_uint16(int(self.scaleX * 4096))
@@ -157,7 +147,7 @@ class ccsMaterial(BrStruct):
                 if clut and clut.name:
                     self.alternativeName = clut.name
         
-        if self.version > 0x130:
+        if self.useCharaShader:
             if self.textureNormIndex:
                 self.textureN = chunks.get(self.textureNormIndex)
             if self.textureSpecIndex:
