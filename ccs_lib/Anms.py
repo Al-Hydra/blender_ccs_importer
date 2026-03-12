@@ -172,6 +172,11 @@ def anmChunkWriter(self, br: BinaryReader, version=0x120, sortedChunks=None):
                 anmCtrl_type = 'ObjectController'
                 write_anmCtrlChunk(br, objController, anmCtrl_type, current_frame)
 
+            # Camera controllers
+            for camController in self.cameraControllers:
+                anmCtrl_type = 'CameraController'
+                write_anmCtrlChunk(br, camController, anmCtrl_type, current_frame)
+
             # Material Controllers
             for matController in self.materialControllers:
                 anmCtrl_type = 'MaterialController'

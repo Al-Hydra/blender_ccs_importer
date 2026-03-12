@@ -67,22 +67,19 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
     color_tangents: BoolProperty(name = "visualize_tangents as color", default = False) #type: ignore
 
+    exportModels: BoolProperty(
+        name = "Export Models",
+        default = True
+        )
 
-    removeWrongWeights: BoolProperty(
-        name = "Remove incompatible vertex_groups", 
-        default = True,
-        description = "Remove incompatible vertex_groups from meshs in Blender"
-        ) #type: ignore
+    exportAnimations: BoolProperty(
+        name = "Export Animations (Experimental)",
+        default = False
+        )
     
-    skipExport: BoolProperty(
-        name = "Skip Export", 
-        default = True,
-        description = "Skip export & just remove incompatible vertex_groups from meshs in Blender"
-        ) #type: ignore
-
     gzipOnExport: BoolProperty(
         name = "Compress on export(Gzip)", 
-        default = False,
+        default = True,
         description = "(Recommend only if original file was compressed)"
         ) #type: ignore
 
@@ -127,32 +124,25 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
         layout = self.layout
 
         box = layout.box()
-        box.label(text = "Remove incompatible vertex_groups from meshs in Blender:")
-        box.prop(self, "removeWrongWeights")
-        box.prop(self, "skipExport")
-
-        box = layout.box()
         box.label(text = "Export Options:")
+        box.prop(self, "exportModels")
+        box.prop(self, "exportAnimations")
+
         box.label(text = "Export to ccs file as version:")
         box.prop(self, "ccs_versions", text = "")
-
 
         # Dosen't work as intended yet
         #box.prop(self, "customBoneData")
 
         box.prop(self, "gzipOnExport")
 
-        if self.skipExport:
-            self.removeWrongWeights = True
-
         if self.selected_version >= 0x130:
             self.gzipOnExport = False
             box.prop(self, "tangentSpace", text = "Export Tangents & Bitangents") # TEST
         if self.selected_version != 0x131:
             self.tangentSpace = False
-        
-    
 
+         
     def execute(self, context):
         start_time = time()
 
@@ -164,7 +154,143 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
             exportVersion = self.selected_version
             ccsf.version = self.selected_version
 
-        blender_model = context.object
+        exportMdl(self, ccsf, context, self.exportModels, exportVersion)
+        
+        exportAnm(self, ccsf, context, self.exportAnimations)
+
+        elapsed = time() - start_time
+        msg = f"Exported in {elapsed:.2f}s"
+        print(msg)
+        self.report({'INFO'}, msg)
+
+        writeCCS(f"{self.filepath}", ccsf, self.gzipOnExport, exportVersion)
+        self.report({'INFO'}, f'Exported ccs file as version {hex(ccsf.version)}')
+
+        return {'FINISHED'}
+
+
+def exportAnm(self, ccsf, context, exportAnimations):
+    if exportAnimations == False:
+        self.report({'WARNING'}, "Export Animations Disabled: No animations were exported.")
+        return
+    
+    blender_model = context.object
+    armature = blender_model
+
+    animations = ccsf.sortedChunks.get("Animation", [])
+    if not animations:
+        self.report({'ERROR'}, "No animations found.")
+        return {"CANCELLED"}
+
+    for anmChunk in animations:
+        action = bpy.data.actions.get(anmChunk.name)
+        if not action:
+            continue
+
+        fcurves = None
+        for slot in action.slots:
+            if slot.name_display == blender_model.name:
+                for layer in action.layers:
+                    for strip in layer.strips:
+                        for channelbag in strip.channelbags:
+                            if channelbag.slot_handle == slot.handle:
+                                fcurves = channelbag.fcurves
+                                break
+
+        if not fcurves:
+            continue
+
+        anmChunk.finalize(ccsf.chunks)
+
+        max_frame = anmChunk.frameCount - 1
+        for fc in fcurves:
+            for kp in fc.keyframe_points:
+                max_frame = max(max_frame, int(kp.co.x))
+        if max_frame + 1 > anmChunk.frameCount:
+            anmChunk.frameCount = max_frame + 1
+
+        for ctrl in anmChunk.objectControllers:
+            bone_name = ctrl.object.name
+            bone_path = f'pose.bones["{bone_name}"]'
+
+            bone = armature.data.bones.get(bone_name)
+            if not bone:
+                continue
+
+            bloc = Vector(bone["original_coords"][0]) * 0.01
+            brot = Quaternion(bone["rotation_quat"]).inverted()
+            bscale = Vector(bone["original_coords"][2])
+
+            # --- POSITIONS ---
+            loc_fcs = [
+                next((fc for fc in fcurves if fc.data_path == f'{bone_path}.location' and fc.array_index == i), None)
+                for i in range(3)
+            ]
+            if any(loc_fcs):
+                frames = get_keyed_frames(loc_fcs)
+                if frames:
+                    ctrl.ctrlFlags = set_ctrl_flag(ctrl.ctrlFlags, 0, 2)
+                    ctrl.positions = {}
+                    for f in frames:
+                        blender_pos = Vector(tuple(fc.evaluate(f) if fc else 0.0 for fc in loc_fcs))
+
+                        brot_inv = brot.inverted()
+                        bind_loc = Vector(bloc)
+                        bind_loc.rotate(brot)
+
+                        pos = blender_pos + bind_loc
+                        pos.rotate(brot_inv)
+
+                        ctrl.positions[f] = tuple(pos * 100)
+
+            # --- ROTATIONS ---
+            rot_fcs = [
+                next((fc for fc in fcurves if fc.data_path == f'{bone_path}.rotation_quaternion' and fc.array_index == i), None)
+                for i in range(4)
+            ]
+            if any(rot_fcs):
+                frames = get_keyed_frames(rot_fcs)
+                if frames:
+                    if ctrl.rotationsEuler:
+                        ctrl.ctrlFlags = set_ctrl_flag(ctrl.ctrlFlags, 3, 2)
+                        ctrl.rotationsEuler = {}
+                        for f in frames:
+                            blender_quat = Quaternion(tuple(fc.evaluate(f) if fc else (1.0 if i == 0 else 0.0) for i, fc in enumerate(rot_fcs)))
+                            ccs_quat = brot.inverted() @ blender_quat
+                            ccs_euler = ccs_quat.to_euler("ZYX")
+                            ctrl.rotationsEuler[f] = tuple(degrees(a) for a in ccs_euler)
+                    else:
+                        # quat — tanto se já existia quanto se é do zero
+                        ctrl.ctrlFlags = set_ctrl_flag(ctrl.ctrlFlags, 3, 4)
+                        ctrl.rotationsQuat = {}
+                        for f in frames:
+                            blender_quat = Quaternion(tuple(fc.evaluate(f) if fc else (1.0 if i == 0 else 0.0) for i, fc in enumerate(rot_fcs)))
+                            ccs_quat = brot.rotation_difference(blender_quat).inverted()
+                            ctrl.rotationsQuat[f] = (ccs_quat.x, ccs_quat.y, ccs_quat.z, ccs_quat.w)
+
+            # --- SCALES ---
+            scale_fcs = [
+                next((fc for fc in fcurves if fc.data_path == f'{bone_path}.scale' and fc.array_index == i), None)
+                for i in range(3)
+            ]
+            if any(scale_fcs):
+                frames = get_keyed_frames(scale_fcs)
+                if frames:
+                    ctrl.ctrlFlags = set_ctrl_flag(ctrl.ctrlFlags, 6, 2)
+                    ctrl.scales = {}
+                    for f in frames:
+                        blender_scale = Vector(tuple(fc.evaluate(f) if fc else 1.0 for fc in scale_fcs))
+                        ccs_scale = Vector([s * b for s, b in zip(blender_scale, bscale)])
+                        ctrl.scales[f] = tuple(ccs_scale)
+
+
+def exportMdl(self, ccsf, context, exportModels, exportVersion):
+    if exportModels == False:
+        self.report({'WARNING'}, "Export Models Disabled: No models were exported.")
+        return
+    
+    blender_model = context.object
+    if blender_model is not None and blender_model.select_get():
         if blender_model.type != 'ARMATURE':
             if blender_model.parent.type == 'ARMATURE':
                 blender_model = blender_model.parent
@@ -251,7 +377,7 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
             # Replace mesh data in model chunks
             if mdlChunk.modelType & ModelTypes.Deformable and not mdlChunk.modelType & ModelTypes.TrianglesList:
-                exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
+                exportMdlDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
                 #print(f'Exported mdlChunk as DeformableMesh: {mdlChunk.name}')
 
             elif mdlChunk.modelType == ModelTypes.ShadowMesh:
@@ -262,40 +388,23 @@ class CCS_IMPORTER_OT_EXPORT(Operator, ExportHelper):
 
             else:
                 print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
-                exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
+                exportMdlRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer)
                 #print(f'Exported mdlChunk as RigidMesh: {mdlChunk.name}')
-                
-
-        elapsed = time() - start_time
-        msg = f"Exported in {elapsed:.2f}s"
-        print(msg)
-        self.report({'INFO'}, msg)
-
-        if self.skipExport == False:
-            writeCCS(f"{self.filepath}", ccsf, self.gzipOnExport, exportVersion)
-            if self.removeWrongWeights == False:
-                self.report({'INFO'}, f'Exported ccs file as version {hex(ccsf.version)}')
-            else:
-                self.report({'WARNING'}, f'Exported ccs file as version {hex(ccsf.version)} & removed incompatible vertex_groups from meshs in Blender.')
-        else:
-            self.report({'WARNING'}, "Skipped export & removed incompatible vertex_groups from meshs in Blender.")
-
-        return {'FINISHED'}
+    else:
+        self.report({'WARNING'}, "No object selected.")
 
 
-
-def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
+def exportMdlRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
     # Bone name for rigid mesh
     bone_name = mdlChunk.name.replace("MDL_", "OBJ_")
     # Get vertex_groups from mesh object
     vertex_groups = mesh_obj.vertex_groups
     
     # Remove incompatible vertex groups from rigid mesh in Blender
-    if self.removeWrongWeights:
-        for vg in vertex_groups:
-            if vg.name != bone_name:
-                vertex_groups.remove(vg)
-            
+    for vg in vertex_groups:
+        if vg.name != bone_name:
+            vertex_groups.remove(vg)
+
     # Assign bone reference for mdlChunk to rigid mesh
     if not mesh_obj.vertex_groups:
         mesh_obj.vertex_groups.new(name=bone_name)
@@ -319,9 +428,8 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     # create bone matrix
     for b in blender_model.data.bones:
         if b.name == bone_name:
-            br_w_mtx = armature_matrix @ b.matrix_local
-            br_w_inv = br_w_mtx.inverted()
-            bone_mtx = br_w_inv @ mesh_matrix
+            ccs_bone_matrix = Matrix(b["matrix"])
+            bone_mtx = ccs_bone_matrix.inverted() @ mesh_matrix
             bone_mtx_3x3 = bone_mtx.to_3x3()
             break
 
@@ -429,7 +537,7 @@ def exportRigid(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk,
     return
 
 
-def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
+def exportMdlDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlChunk, ccsf, uv_layer, color_layer):
     # get bone reference from clump
     if mdlChunk.lookupList != None:
         bones = [cmpChunk.bones[cmpChunk.boneIndices[i]] for i in mdlChunk.lookupList]
@@ -442,10 +550,9 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
     vertex_groups = mesh_obj.vertex_groups
 
     # Remove incompatible vertex groups not in cmpChunk.bones &/or mdlChunk.lookupList
-    if self.removeWrongWeights:
-        for vg in vertex_groups:
-            if vg.name not in bone_names:
-                vertex_groups.remove(vg)
+    for vg in vertex_groups:
+        if vg.name not in bone_names:
+            vertex_groups.remove(vg)
 
     # Add missing compatible vertex groups to mesh from cmpChunk.bones &/or mdlChunk.lookupList
     for bn in bone_names:
@@ -502,11 +609,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                         # create bone matrix
                         for b in blender_model.data.bones:
                             if b.name == group_name:
-                                #print(f"ArmatureBone: {b.name}")
-                                # get bone rest matrix
-                                br_w_mtx = armature_matrix @ b.matrix_local
-                                br_w_inv = br_w_mtx.inverted()
-                                bone_mtx = br_w_inv @ mesh_matrix
+                                ccs_bone_matrix = Matrix(b["matrix"])  # matriz CCS acumulada
+                                bone_mtx = ccs_bone_matrix.inverted() @ mesh_matrix
                                 break
 
                         for i , bone in enumerate(bones):
@@ -536,11 +640,8 @@ def exportDeformable(self, blender_model, mesh_obj, blender_mesh, cmpChunk, mdlC
                     # create bone matrix
                     for b in blender_model.data.bones:
                         if b.name == group_name:
-                            #print(f"ArmatureBone: {b.name}")
-                            # get bone rest matrix
-                            br_w_mtx = armature_matrix @ b.matrix_local
-                            br_w_inv = br_w_mtx.inverted()
-                            bone_mtx = br_w_inv @ mesh_matrix
+                            ccs_bone_matrix = Matrix(b["matrix"])  # matriz CCS acumulada
+                            bone_mtx = ccs_bone_matrix.inverted() @ mesh_matrix
                             break
 
                     for i , bone in enumerate(bones):
@@ -962,3 +1063,18 @@ def visualize_tangents(mesh):
 
     mesh.update()
     print(f"Tangent visualization written to vertex colors: {tangent_layer_name}")
+
+
+def set_ctrl_flag(ctrlFlags, shift, mode):
+    mask = ~(0b111 << shift)
+    return (ctrlFlags & mask) | (mode << shift)
+
+
+def get_keyed_frames(fcs):
+    frames = set()
+    for fc in fcs:
+        if fc:
+            for kp in fc.keyframe_points:
+                frames.add(int(kp.co.x))
+    return sorted(frames)
+
