@@ -1297,7 +1297,10 @@ class importCCS:
         #apply the anim to the scene
         bpy.context.scene.animation_data_create()
         bpy.context.scene.animation_data.action = action
-
+        scene_channelbag = action.layers[0].strips[0].channelbag(scene_action_slot)
+        if not scene_channelbag:
+            scene_channelbag = action.layers[0].strips[0].channelbags.new(scene_action_slot)
+        self._scene_channelbag = scene_channelbag
         bpy.context.scene.animation_data.action_slot = scene_action_slot
         
         #add the action to the action list
@@ -1321,20 +1324,14 @@ class importCCS:
             ccsAnmObj = objCtrl.object
             target_bone = ccsAnmObj.name
 
-            #if ccsAnmObj.name.find(source) != -1:
-                #target_bone = ccsAnmObj.name.replace(source, target)
-            
             if ccsAnmObj.clump:
                 clump = ccsAnmObj.clump.name
             else:
-                #try to get it from blender
                 clump = bpy.context.scene.ccs_importer.objects.get(target_bone)
                 if clump:
                     clump = clump.clump
                 else:
-                    #print(f"ccsAnmObj name {ccsAnmObj.name}, clump {ccsAnmObj.clump}")
                     clump = None
-                    #continue
 
             if self.use_target_skeleton:
                 target_armature = bpy.data.objects.get(self.target_skeleton)
@@ -1347,8 +1344,6 @@ class importCCS:
                 armatureObj.animation_data_create()
                 armatureObj.animation_data.action = action
                 
-                #create a new action slot with the armature name
-                #check if a slot already exists
                 try:
                     slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
                 except:
@@ -1374,7 +1369,6 @@ class importCCS:
                 bscale = Vector(bone["original_coords"][2])
     
                 group_name = action.groups.new(name = posebone.name).name
-                #group_name = posebone.name
     
                 if self.swap_names:
                     if ccsAnmObj.name.find(source) != -1:
@@ -1849,92 +1843,52 @@ class importCCS:
                             data_path = f'{"scale"}'
                             self.insertFrames(fcurves, group_name, data_path, scales, 3)
 
+        for matCtrl in anim.materialControllers:
+            bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(matCtrl.name)]
+            if not bmats:
+                continue
 
-        for mat in anim.materialControllers:
-            bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
-            if bmats:
-                blender_mat = bmats[0]
-                group_name = blender_mat.name
+            blender_mat = bmats[0]
+            group_name = blender_mat.name
 
-                '''material_action = action #bpy.data.actions.new(f"{action.name} ({mat.name})")
-                blender_mat.animation_data_create()
-                blender_mat.animation_data.action = material_action'''
-                
-                #we'll try to find the material in the scene manager
-                scene = bpy.context.scene
-                manager = scene.ccs_manager
-                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
-                if ccs_scene_mat:
-                    #try to get its index
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                else:
-                    #add the material to the scene manager
-                    ccs_scene_mat = manager.ccs_materials.add()
-                    ccs_scene_mat.material = blender_mat
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                
-                
-                #get the uvOffsetNode
-                uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
-                uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
-                if uv_offset_node:
-                    uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
-                if uv_scale_node:
-                    uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
-                
-                #check if a slot already exists
-                '''try:
-                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
-                except:
-                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
-                
-                blender_mat.animation_data.action_slot = slot
-                    
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves'''
-                
-                offsetX_value = blender_mat["uvOffset"][0]
-                offsetY_value = blender_mat["uvOffset"][1]
-                scaleX_value = blender_mat["uvOffset"][2]
-                scaleY_value = blender_mat["uvOffset"][3]
-                
-                offsetsX = {f: [v - offsetX_value] for f, v in mat.offsetX.items()}
-                offsetsY = {f: [v - offsetY_value] for f, v in mat.offsetY.items()}
-                scalesX = {f: [1 + scaleX_value - v] for f, v in mat.scaleX.items()}
-                scalesY = {f: [1 + scaleY_value - v] for f, v in mat.scaleY.items()}
-                
-                '''data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)'''
-                
-                #we'll try to insert the frames in the scene manager material
-                scene = bpy.context.scene
-                manager = scene.ccs_manager
-                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
-                if ccs_scene_mat:
-                    #try to get its index
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                else:
-                    #add the material to the scene manager
-                    ccs_scene_mat = manager.ccs_materials.add()
-                    ccs_scene_mat.material = blender_mat
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                    
-                
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsY, 1)
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesY, 1)
+            scene = bpy.context.scene
+            manager = scene.ccs_manager
+            ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
+            if ccs_scene_mat:
+                ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+            else:
+                ccs_scene_mat = manager.ccs_materials.add()
+                ccs_scene_mat.material = blender_mat
+                ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+
+            uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
+            uv_scale_node  = blender_mat.node_tree.nodes.get("uvScaleNode")
+            use_scene_manager_node = blender_mat.node_tree.nodes.get("useSceneManager")
+            if uv_offset_node:
+                uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
+            if uv_scale_node:
+                uv_scale_node.attribute_name  = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
+            if use_scene_manager_node:
+                use_scene_manager_node.inputs[0].default_value = 1.0
+
+            offsetX_value = blender_mat["uvOffset"][0]
+            offsetY_value = blender_mat["uvOffset"][1]
+            scaleX_value  = blender_mat["uvOffset"][2]
+            scaleY_value  = blender_mat["uvOffset"][3]
+
+            offsetsX = {f: [v - offsetX_value]       for f, v in matCtrl.offsetX.items()}
+            offsetsY = {f: [1 - (v - offsetY_value)] for f, v in matCtrl.offsetY.items()}
+            scalesX  = {f: [1 + v - scaleX_value]    for f, v in matCtrl.scaleX.items()}
+            scalesY  = {f: [1 + v - scaleY_value]    for f, v in matCtrl.scaleY.items()}
+
+            data_path_offset = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
+            data_path_scale  = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
+
+            scene_fcurves = bpy.context.scene.animation_data.action.fcurves
+            self.insertMaterialFrames(scene_fcurves, group_name, data_path_offset, offsetsX, 0)
+            self.insertMaterialFrames(scene_fcurves, group_name, data_path_offset, offsetsY, 1)
+            self.insertMaterialFrames(scene_fcurves, group_name, data_path_scale,  scalesX,  0)
+            self.insertMaterialFrames(scene_fcurves, group_name, data_path_scale,  scalesY,  1)
 
         for mat in anim.materials.keys():
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
@@ -2177,14 +2131,20 @@ class importCCS:
                 for kp in fc.keyframe_points:
                     kp.interpolation = interpolation
 
-
     def insertMaterialFrames(self, fcurves, group_name, data_path, values, index):
         if len(values):
-            fc = fcurves.new(data_path=data_path, index=index)
+            print(f"insertMaterialFrames: data_path={data_path}, values={values}, fcurves type={type(fcurves)}, fcurves id={id(fcurves)}")
+            fc = next((f for f in fcurves if f.data_path == data_path and f.array_index == index), None)
+            if fc is None:
+                fc = fcurves.new(data_path=data_path, index=index)
+                print(f"fcurve criada: {fc}")
+            else:
+                fc.keyframe_points.clear()
+                
             fc.keyframe_points.add(len(values.keys()))
             fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[0]), values.keys(), values.values())) for x in co])
-
             fc.update()
+            print(f"keyframes inseridos: {[(k.co.x, k.co.y) for k in fc.keyframe_points]}")
         
     
 def menu_func_import(self, context):
