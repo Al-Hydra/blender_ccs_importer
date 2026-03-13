@@ -1337,7 +1337,10 @@ class importCCS:
         #apply the anim to the scene
         bpy.context.scene.animation_data_create()
         bpy.context.scene.animation_data.action = action
-
+        scene_channelbag = action.layers[0].strips[0].channelbag(scene_action_slot)
+        if not scene_channelbag:
+            scene_channelbag = action.layers[0].strips[0].channelbags.new(scene_action_slot)
+        self._scene_channelbag = scene_channelbag
         bpy.context.scene.animation_data.action_slot = scene_action_slot
         scene_channelbag = self.getOrCreateChannelbag(action, scene_action_slot)  # ADD THIS
         bpy.context.scene.animation_data.action_slot = xfbin_scene_action_slot
@@ -1368,20 +1371,14 @@ class importCCS:
             ccsAnmObj = objCtrl.object
             target_bone = ccsAnmObj.name
 
-            #if ccsAnmObj.name.find(source) != -1:
-                #target_bone = ccsAnmObj.name.replace(source, target)
-            
             if ccsAnmObj.clump:
                 clump = ccsAnmObj.clump.name
             else:
-                #try to get it from blender
                 clump = bpy.context.scene.ccs_importer.objects.get(target_bone)
                 if clump:
                     clump = clump.clump
                 else:
-                    #print(f"ccsAnmObj name {ccsAnmObj.name}, clump {ccsAnmObj.clump}")
                     clump = None
-                    #continue
 
             if self.use_target_skeleton:
                 target_armature = bpy.data.objects.get(self.target_skeleton)
@@ -1394,8 +1391,6 @@ class importCCS:
                 armatureObj.animation_data_create()
                 armatureObj.animation_data.action = action
                 
-                #create a new action slot with the armature name
-                #check if a slot already exists
                 try:
                     slot = armatureObj.animation_data.action.slots[f"OB{armatureObj.name}"]
                 except:
@@ -1418,7 +1413,6 @@ class importCCS:
                 bscale = Vector(bone["original_coords"][2])
     
                 group_name = action.groups.new(name = posebone.name).name
-                #group_name = posebone.name
     
                 if self.swap_names:
                     if ccsAnmObj.name.find(source) != -1:
@@ -1924,6 +1918,10 @@ class importCCS:
                                 data_path = f'{"xfbin_scene.lightpoint_attenuation0"}'
                                 self.insertFrames(xfbin_scene_channelbag, group_name, data_path, radOuter, 1)
 
+        for matCtrl in anim.materialControllers:
+            bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(matCtrl.name)]
+            if not bmats:
+                continue
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]

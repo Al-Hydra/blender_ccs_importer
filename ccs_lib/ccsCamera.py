@@ -13,6 +13,8 @@ class ccsCamera(BrStruct):
         self.name = indexTable.Names[self.index][0]
         self.path = indexTable.Names[self.index][1]
     
+    def __br_write__(self, br: BinaryReader, version):
+        br.write_uint32(self.index)
 
     def finalize(self, chunks):
         pass
