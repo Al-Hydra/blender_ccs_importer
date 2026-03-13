@@ -12,7 +12,12 @@ from .ccs_lib.ccsStream import *
 import os, zlib
 import cProfile
 import pstats
-
+def _xfbin_available():
+    try:
+        from . import XFBIN_AVAILABLE
+        return XFBIN_AVAILABLE
+    except ImportError:
+        return False
 class ccsObjectProperties(bpy.types.PropertyGroup):
     name: StringProperty(
         name="",
@@ -343,7 +348,20 @@ class importCCS:
             ccs_manager_collection.objects.link(ccs_manager)
         else:
             ccs_manager = bpy.data.objects.get("CCS Scene Manager")
-        
+            
+        if _xfbin_available():
+            if not bpy.data.collections.get("XFBIN Scene Manager"):
+                xfbin_manager_collection = bpy.data.collections.new("XFBIN Scene Manager")
+                bpy.context.collection.children.link(xfbin_manager_collection)
+            else:
+                xfbin_manager_collection = bpy.data.collections.get("XFBIN Scene Manager")
+            
+            if not bpy.data.objects.get("XFBIN Scene Manager"):
+                xfbin_scene = bpy.data.objects.new("XFBIN Scene Manager", None)
+                xfbin_scene.empty_display_size = 0.01
+                xfbin_manager_collection.objects.link(xfbin_scene)
+            else:
+                xfbin_scene = bpy.data.objects.get("XFBIN Scene Manager")
 
         #clumps
         for cmpChunk in self.ccsf.sortedChunks["Clump"]:
@@ -479,7 +497,8 @@ class importCCS:
                         bLight.scale = (-1, -1, -1)
                         #set this object as the light direction object
                         ccs_manager["lightdir_object"] = bLight
-                        
+                        if _xfbin_available():
+                            xfbin_scene["lightdir_object"] = bLight
                         lightObject = bLight
 
                         
@@ -496,6 +515,8 @@ class importCCS:
                         
                         #set this object as the light point object
                         ccs_manager["lightpoint_object"] = bLight
+                        if _xfbin_available():
+                            xfbin_scene["lightpoint_object0"] = bLight
 
                     
                         lightObject = bLight
@@ -708,10 +729,16 @@ class importCCS:
             #find the armature and add all the bones to a dict
             armature = bpy.data.objects.get(clump.name)
             bone_indices = {}
-            for i in range(len(armature.pose.bones)):
-                obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                bone_indices[armature.pose.bones[i].name] = i
-            
+            if armature is not None:
+                for i in range(len(armature.pose.bones)):
+                    pose_bone = armature.pose.bones[i]
+                    obj.vertex_groups.new(name = pose_bone.name)
+                    bone_indices[pose_bone.name] = i
+
+                    # add custom property "opacity" to pose bone if not present
+                    if "opacity" not in pose_bone:
+                        pose_bone["opacity"] = 1.0
+
             # check the clump for external bones and update the lookup names
             lookupNames = model.lookuplistnames.copy()
             if lookupNames:
@@ -777,9 +804,15 @@ class importCCS:
 
                     bone_indices = {}
                     parent_clump = bpy.data.objects.get(clump.name)
-                    for i in range(len(parent_clump.pose.bones)):
-                        obj.vertex_groups.new(name = parent_clump.pose.bones[i].name)
-                        bone_indices[parent_clump.pose.bones[i].name] = i
+                    if parent_clump is not None:
+                        for i in range(len(parent_clump.pose.bones)):
+                            pose_bone = parent_clump.pose.bones[i]
+                            obj.vertex_groups.new(name = pose_bone.name)
+                            bone_indices[pose_bone.name] = i
+
+                            # add custom property "opacity" to pose bone if not present
+                            if "opacity" not in pose_bone:
+                                pose_bone["opacity"] = 1.0
 
                     meshdata = self.makeMeshTriList(meshdata, model, mesh, bone_indices, parent_clump)
 
@@ -827,9 +860,15 @@ class importCCS:
                         parent = armature.data.bones[0]
 
                     bone_indices = {}
-                    for i in range(len(armature.pose.bones)):
-                        obj.vertex_groups.new(name = armature.pose.bones[i].name)
-                        bone_indices[armature.pose.bones[i].name] = i
+                    if armature is not None:
+                        for i in range(len(armature.pose.bones)):
+                            pose_bone = armature.pose.bones[i]
+                            obj.vertex_groups.new(name = pose_bone.name)
+                            bone_indices[pose_bone.name] = i
+
+                            # add custom property "opacity" to pose bone if not present
+                            if "opacity" not in pose_bone:
+                                pose_bone["opacity"] = 1.0
                     
                     normals = []
                     bm = bmesh.new()
@@ -1294,12 +1333,20 @@ class importCCS:
         action.layers[0].strips.new(type="KEYFRAME")
         #create a channelbag
         scene_action_slot = action.slots.new(id_type='SCENE', name="CCS_Scene")
+        xfbin_scene_action_slot = None
         #apply the anim to the scene
         bpy.context.scene.animation_data_create()
         bpy.context.scene.animation_data.action = action
 
         bpy.context.scene.animation_data.action_slot = scene_action_slot
-        
+        scene_channelbag = self.getOrCreateChannelbag(action, scene_action_slot)  # ADD THIS
+        bpy.context.scene.animation_data.action_slot = xfbin_scene_action_slot
+        xfbin_scene_channelbag = None  # default to None
+        if _xfbin_available():
+            xfbin_scene_action_slot = action.slots.new(id_type='SCENE', name="XFBIN_Scene")
+            bpy.context.scene.animation_data.action_slot = xfbin_scene_action_slot
+            xfbin_scene_channelbag = self.getOrCreateChannelbag(action, xfbin_scene_action_slot)
+    
         #add the action to the action list
         new_scene_action = bpy.context.scene.ccs_manager.ccs_actions.add()
         new_scene_action.name = anim.name
@@ -1356,11 +1403,8 @@ class importCCS:
                 
                 
                 armatureObj.animation_data.action_slot = slot    
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                
+                channelbag = self.getOrCreateChannelbag(action, slot)
 
                 posebone = armatureObj.pose.bones.get(target_bone)
     
@@ -1390,26 +1434,48 @@ class importCCS:
                         group_name = action.groups.new(name = new_bone_name).name
                 
                 bone_path = f'pose.bones["{group_name}"]'
+                opacity_dict = {}
+                for frame, locrotscaleop in objCtrl.items():
+                    loc, rot, scale, opacity, _, _, _ = locrotscaleop
 
+                    loc = Vector(loc) * 0.01
+                    bind_loc = Vector(bloc)
+                    loc.rotate(brot)
+                    bind_loc.rotate(brot)
+
+                    locations[frame] = loc - bind_loc
+
+                    endQuat = brot @ Euler((radians(x) for x in rot), "ZYX").to_quaternion()
+
+                    if startQuat.dot(endQuat) < 0:
+                        endQuat.negate()
+                    
+                    rotations[frame] = endQuat
+                    startQuat = endQuat
+
+                    scale_factor = Vector([s / b for s, b in zip(scale, bscale)])
+                    scales[frame] = scale_factor
+                    
+                    opacity_dict[frame] = [opacity]
                 
                 locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
                 data_path = f'{bone_path}.{"location"}'
-                self.insertFrames(fcurves, group_name, data_path, locations, 3)
+                self.insertFrames(channelbag, group_name, data_path, locations, 3)
                 
                 #Rotations Euler
                 rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
                 data_path = f'{bone_path}.{"rotation_quaternion"}'
-                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
+                self.insertFrames(channelbag, group_name, data_path, rotations, 4)
                 
                 #Rotations Quaternion
                 rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
                 
                 data_path = f'{bone_path}.{"rotation_quaternion"}'
-                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)
+                self.insertFrames(channelbag, group_name, data_path, rotations_quat, 4)
         
                 scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
                 data_path = f'{bone_path}.{"scale"}'
-                self.insertFrames(fcurves, group_name, data_path, scales, 3)
+                self.insertFrames(channelbag, group_name, data_path, scales, 3)
 
             if self.import_effects and ccsAnmObj.type == "Effect":
                 effect = bpy.data.objects[f'{ccsAnmObj.model.name}']
@@ -1428,11 +1494,8 @@ class importCCS:
                 except:
                     slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=effect.name)
                     
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                
+                channelbag = self.getOrCreateChannelbag(action, slot)
                 
                 #original_coords = effect["original_coords"]
                 bloc = Vector(effect["original_coords"][0]) * 0.01
@@ -1442,24 +1505,24 @@ class importCCS:
                 locations = self.convertVectorLocation(objCtrl.positions.items(), bloc, brot.inverted())
                 data_path = f'{"location"}'
                 #self.insertFrames(effect_action, group_name, data_path, locations, 3)
-                self.insertFrames(fcurves, group_name, data_path, locations, 3)
+                self.insertFrames(channelbag, group_name, data_path, locations, 3)
                 
                 #Rotations Euler
                 rotations = self.convertEulerRotation(objCtrl.rotationsEuler.items(), brot.inverted())
                 data_path = f'{"rotation_quaternion"}'
                 #self.insertFrames(effect_action, group_name, data_path, rotations, 4)
-                self.insertFrames(fcurves, group_name, data_path, rotations, 4)
+                self.insertFrames(channelbag, group_name, data_path, rotations, 4)
                 
                 #Rotations Quaternion
                 rotations_quat = self.convertQuaternionRotation(objCtrl.rotationsQuat.items(), brot)
                 data_path = f'{"rotation_quaternion"}'
                 #self.insertFrames(effect_action, group_name, data_path, rotations_quat, 4)
-                self.insertFrames(fcurves, group_name, data_path, rotations_quat, 4)
+                self.insertFrames(channelbag, group_name, data_path, rotations_quat, 4)
         
                 scales = self.convertVectorScale(objCtrl.scales.items(), bscale)
                 data_path = f'{"scale"}'
                 #self.insertFrames(effect_action, group_name, data_path, scales, 3)
-                self.insertFrames(fcurves, group_name, data_path, scales, 3)
+                self.insertFrames(channelbag, group_name, data_path, scales, 3)
                 
         
         for obj in anim.objects.keys():
@@ -1502,11 +1565,8 @@ class importCCS:
                 slot = armatureObj.animation_data.action.slots.new(id_type='OBJECT', name=armatureObj.name)
             
             armatureObj.animation_data.action_slot = slot
-            channelbag = action.layers[0].strips[0].channelbag(slot)
-            if channelbag:
-                fcurves = channelbag.fcurves
-            else:
-                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+            
+            channelbag = self.getOrCreateChannelbag(action, slot)
 
             posebone = armatureObj.pose.bones.get(target_bone)
             if not posebone:
@@ -1518,9 +1578,9 @@ class importCCS:
             
             #attempt to apply the animation to a model that matches a bone name
             target_model = bpy.data.objects.get(obj.replace('OBJ_', 'MDL_'))
-            opacity_fcurves = fcurves
             opacity_dict = {}
             opacity_datapath = f'{bone_path}.{"opacity"}'
+            channelbag2 = channelbag
             if target_model:                
                 target_model.animation_data_create()
                 target_model.animation_data.action = action
@@ -1529,13 +1589,9 @@ class importCCS:
                 model_slot = target_model.animation_data.action.slots.new(id_type='OBJECT', name=target_model.name)
                 target_model.animation_data.action_slot = model_slot
                 #get the fcurves for the model slot
-                channelbag = action.layers[0].strips[0].channelbag(model_slot)
-                if channelbag:
-                    opacity_fcurves = channelbag.fcurves
-                    opacity_datapath = f'["opacity"]'
-                else:
-                    opacity_fcurves = action.layers[0].strips[0].channelbags.new(model_slot).fcurves
-                    opacity_datapath = f'["opacity"]'
+                
+                channelbag2 = self.getOrCreateChannelbag(action, model_slot)
+
                 
 
             bone = armatureObj.data.bones.get(posebone.name)
@@ -1578,19 +1634,24 @@ class importCCS:
 
             
             data_path = f'{bone_path}.{"location"}'
-            self.insertFrames(fcurves, group_name, data_path, locations, 3)
+            self.insertFrames(channelbag, group_name, data_path, locations, 3)
 
             data_path = f'{bone_path}.{"rotation_quaternion"}'
-            self.insertFrames(fcurves, group_name, data_path, rotations, 4)
+            self.insertFrames(channelbag, group_name, data_path, rotations, 4)
 
             data_path = f'{bone_path}.{"scale"}'
-            self.insertFrames(fcurves, group_name, data_path, scales, 3)
+            self.insertFrames(channelbag, group_name, data_path, scales, 3)
 
             
-            self.insertFrames(opacity_fcurves, group_name, opacity_datapath, opacity_dict, 1, "CONSTANT")
+            data_path = f'{bone_path}[\"opacity\"]'
+            self.insertFrames(channelbag, group_name, data_path, opacity_dict, 1, "CONSTANT")
+            
+            
+            
             
             if target_model:
-                self.insertFrames(opacity_fcurves, target_model.name, "hide_viewport", visibility, 1, "CONSTANT")
+                self.insertFrames(channelbag2, target_model.name, f'["opacity"]', opacity_dict, 1, "CONSTANT")
+                self.insertFrames(channelbag2, target_model.name, "hide_viewport", visibility, 1, "CONSTANT")
 
 
         if self.import_morphs:
@@ -1631,7 +1692,7 @@ class importCCS:
                                 
                                 morph_values = {f: [1 - anim.morphs[morphF][target][f][0]] for f in anim.morphs[morphF][target].keys()}
                                 
-                                self.insertFrames(fcurves, targetShapeKey.name, data_path, morph_values, 1)
+                                self.insertFrames_old(fcurves, targetShapeKey.name, data_path, morph_values, 1)
                     #except:
                     #    print(f"Error at {targetShapeKey.name}")
 
@@ -1707,12 +1768,8 @@ class importCCS:
                     slot = cameraObject.animation_data.action.slots.new(id_type='OBJECT', name=cameraObject.name)
 
                 cameraObject.animation_data.action_slot = slot
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-            
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                
+                channelbag = self.getOrCreateChannelbag(action, slot)
                 
                 locations = {}
                 rotations = {}
@@ -1724,13 +1781,13 @@ class importCCS:
                     fovs[frame] = [cameraObject.data.sensor_width / (2 * math.tan(radians(fov) / 2))]
 
                 data_path = f'{"location"}'
-                self.insertFrames(fcurves, group_name, data_path, locations, 3)
+                self.insertFrames(channelbag, group_name, data_path, locations, 3)
                 
                 data_path = f'{"rotation_euler"}'
-                self.insertFrames(fcurves, group_name, data_path, rotations, 3)
+                self.insertFrames(channelbag, group_name, data_path, rotations, 3)
 
                 data_path = f'{"data.lens"}'
-                self.insertFrames(fcurves, group_name, data_path, fovs, 1)
+                self.insertFrames(channelbag, group_name, data_path, fovs, 1)
 
 
         for light in anim.lights.keys():
@@ -1739,14 +1796,18 @@ class importCCS:
                 scene_manager = bpy.context.scene.ccs_manager
                 
                 #group_name = scene_action.groups.new(name = f"Ambient").name
-                group_name = action.groups.new(name = f"Ambient").name
+                group_name = action.groups.new(name = f"{anim.name}_AMBIENT").name
                 
                 ambient_color = {}
                 for frame, values in ambient.items():
                     ambient_color[frame] = [c / 255 for c in values]
                     
                 data_path = f'{"ccs_manager.ambient_color"}'
-                self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, ambient_color, 4)
+                self.insertFrames(scene_channelbag, group_name, data_path, ambient_color, 4)
+                
+                if xfbin_scene_channelbag is not None:
+                    data_path = f'{"xfbin_scene.ambient_anim_color"}'
+                    self.insertFrames(xfbin_scene_channelbag, group_name, data_path, ambient_color, 4)
 
 
             lightObject = self.collection.objects.get(light)
@@ -1767,12 +1828,8 @@ class importCCS:
                             slot = lightObject.animation_data.action.slots.new(id_type='OBJECT', name=lightObject.name)
                             lightObject.animation_data.action_slot = slot
                             
-                            channelbag = action.layers[0].strips[0].channelbag(slot)
-                        
-                            if channelbag:
-                                fcurves = channelbag.fcurves
-                            else:
-                                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                            
+                            channelbag = self.getOrCreateChannelbag(action, slot)
                             
 
                             locations = {}
@@ -1786,13 +1843,20 @@ class importCCS:
                                 color[frame] = [c / 255 for c in col]
                             
                             data_path = f'{"rotation_euler"}'
-                            self.insertFrames(fcurves, group_name, data_path, rotations, 3)
+                            self.insertFrames(channelbag, group_name, data_path, rotations, 3)
                         
                             data_path = f'{"ccs_manager.lightdir_intensity"}'
-                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, energy, 1)
+                            self.insertFrames(scene_channelbag, group_name, data_path, energy, 1)
                             
                             data_path = f'{"ccs_manager.lightdir_color"}'
-                            self.insertFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, color, 4)
+                            self.insertFrames(scene_channelbag, group_name, data_path, color, 4)
+                            
+                            
+                            if xfbin_scene_channelbag is not None:
+                                data_path = f'{"xfbin_scene.lightdir_color"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, color, 4)
+                                data_path = f'{"xfbin_scene.lightdir_intensity"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, energy, 1)
 
                         if lightChunk.lightType.name == 'OmniLight':
                             print(f"lightType: {lightChunk.lightType.name}")
@@ -1808,12 +1872,8 @@ class importCCS:
 
                             lightObject.animation_data.action_slot = slot
                             
-                            channelbag = action.layers[0].strips[0].channelbag(slot)
-                        
-                            if channelbag:
-                                fcurves = channelbag.fcurves
-                            else:
-                                fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves
+                            
+                            channelbag = self.getOrCreateChannelbag(action, slot)
                             
 
                             locations = {}
@@ -1832,172 +1892,137 @@ class importCCS:
                                 scales[frame] =  Vector((rado * 2, rado * 2, rado * 2)) * 0.01
 
                             data_path = f'{"location"}'
-                            self.insertFrames(fcurves, group_name, data_path, locations, 3)
+                            self.insertFrames(scene_channelbag, group_name, data_path, locations, 3)
                             
                             data_path = f'{"lightomni_color"}'
-                            self.insertFrames(fcurves, group_name, data_path, color, 4)
+                            self.insertFrames(scene_channelbag, group_name, data_path, color, 4)
                         
                             data_path = f'{"lightomni_intensity"}'
-                            self.insertFrames(fcurves, group_name, data_path, energy, 1)
+                            self.insertFrames(scene_channelbag, group_name, data_path, energy, 1)
 
                             data_path = f'{"lightomni_range_inner"}'
-                            self.insertFrames(fcurves, group_name, data_path, radInner, 1)
+                            self.insertFrames(scene_channelbag, group_name, data_path, radInner, 1)
 
                             data_path = f'{"lightomni_range_outer"}'
-                            self.insertFrames(fcurves, group_name, data_path, radOuter, 1)
+                            self.insertFrames(scene_channelbag, group_name, data_path, radOuter, 1)
 
                             data_path = f'{"scale"}'
-                            self.insertFrames(fcurves, group_name, data_path, scales, 3)
+                            self.insertFrames(scene_channelbag, group_name, data_path, scales, 3)
+                            
+                            
+                            
+                            if xfbin_scene_channelbag is not None:
+                                data_path = f'{"xfbin_scene.lightpoint_color0"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, color, 4)
+                            
+                                data_path = f'{"xfbin_scene.lightpoint_intensity0"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, energy, 1)
+
+                                data_path = f'{"xfbin_scene.lightpoint_range0"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, radInner, 1)
+
+                                data_path = f'{"xfbin_scene.lightpoint_attenuation0"}'
+                                self.insertFrames(xfbin_scene_channelbag, group_name, data_path, radOuter, 1)
 
 
         for mat in anim.materialControllers:
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat.name)]
             if bmats:
                 blender_mat = bmats[0]
-                group_name = blender_mat.name
 
-                '''material_action = action #bpy.data.actions.new(f"{action.name} ({mat.name})")
-                blender_mat.animation_data_create()
-                blender_mat.animation_data.action = material_action'''
-                
                 #we'll try to find the material in the scene manager
                 scene = bpy.context.scene
                 manager = scene.ccs_manager
-                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
-                if ccs_scene_mat:
-                    #try to get its index
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                else:
-                    #add the material to the scene manager
-                    ccs_scene_mat = manager.ccs_materials.add()
-                    ccs_scene_mat.material = blender_mat
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                xfbin_manager = scene.xfbin_scene
+
                 
-                
-                #get the uvOffsetNode
-                uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
-                uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
-                if uv_offset_node:
-                    uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
-                if uv_scale_node:
-                    uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
-                
-                #check if a slot already exists
-                '''try:
-                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
-                except:
-                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
-                
-                blender_mat.animation_data.action_slot = slot
-                    
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves'''
-                
+
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
                 scaleX_value = blender_mat["uvOffset"][2]
                 scaleY_value = blender_mat["uvOffset"][3]
-                
+
                 offsetsX = {f: [v - offsetX_value] for f, v in mat.offsetX.items()}
                 offsetsY = {f: [v - offsetY_value] for f, v in mat.offsetY.items()}
                 scalesX = {f: [1 + scaleX_value - v] for f, v in mat.scaleX.items()}
                 scalesY = {f: [1 + scaleY_value - v] for f, v in mat.scaleY.items()}
-                
-                '''data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
-                data_path = f'{"ccs_material.uvOffset"}'
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)'''
-                
-                #we'll try to insert the frames in the scene manager material
-                scene = bpy.context.scene
-                manager = scene.ccs_manager
-                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
-                if ccs_scene_mat:
-                    #try to get its index
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                else:
-                    #add the material to the scene manager
-                    ccs_scene_mat = manager.ccs_materials.add()
-                    ccs_scene_mat.material = blender_mat
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+
+                slot_names = self.getSlotNamesForMaterial(action, blender_mat)
+                for slot_name_display in slot_names:
+                    group_name = f"{slot_name_display}::{blender_mat.name}"
                     
-                
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsY, 1)
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesY, 1)
+                    ccs_scene_mat = None
+                    ccs_scene_mat_index = -1
+                    for i, itm in enumerate(manager.ccs_materials):
+                        if itm.material == blender_mat and getattr(itm, "slot_name", "") == slot_name_display:
+                            ccs_scene_mat = itm
+                            ccs_scene_mat_index = i
+                            break
+
+                    # если не найден — добавляем новую запись
+                    if ccs_scene_mat_index == -1:
+                        ccs_scene_mat = manager.ccs_materials.add()
+                        ccs_scene_mat.material = blender_mat
+                        ccs_scene_mat.name = slot_name_display
+                        ccs_scene_mat_index = len(manager.ccs_materials) - 1
+                        
+                    if xfbin_scene_channelbag is not None:
+                        xfbin_scene_mat = None
+                        xfbin_scene_mat_index = -1
+                        for i, itm in enumerate(xfbin_manager.xfbin_materials):
+                            if itm.material == blender_mat and getattr(itm, "name", "") == slot_name_display:
+                                xfbin_scene_mat = itm
+                                xfbin_scene_mat_index = i
+                                break
+
+                        # если не найден — добавляем новую запись
+                        if xfbin_scene_mat_index == -1:
+                            xfbin_scene_mat = xfbin_manager.xfbin_materials.add()
+                            xfbin_scene_mat.material = blender_mat
+                            xfbin_scene_mat.name = slot_name_display
+                            xfbin_scene_mat_index = len(xfbin_manager.xfbin_materials) - 1
+
+                    # получить узлы и присвоить attribute_name с найденным индексом
+                    uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
+                    uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
+                    if uv_offset_node:
+                        uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
+                    if uv_scale_node:
+                        uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
+                    data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, offsetsX, 0)
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, offsetsY, 1)
+                    data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, scalesX, 0)
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, scalesY, 1)
+                    
+                    if xfbin_scene_channelbag is not None:
+                        data_path = f'xfbin_scene.xfbin_materials[{xfbin_scene_mat_index}].uvOffset0'
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, offsetsX, 0)
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, offsetsY, 1)
+                        data_path = f'xfbin_scene.xfbin_materials[{xfbin_scene_mat_index}].uvScale0'
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, scalesX, 0)
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, scalesY, 1)
 
         for mat in anim.materials.keys():
             bmats = [bmat for bmat in bpy.data.materials if bmat.name.endswith(mat)]
             if bmats:
                 blender_mat = bmats[0]
-                group_name = blender_mat.name
 
-                #material_action = action
-                #blender_mat.animation_data_create()
-                #blender_mat.animation_data.action = material_action
-                
                 #we'll try to find the material in the scene manager
                 scene = bpy.context.scene
                 manager = scene.ccs_manager
-                ccs_scene_mat = manager.ccs_materials.get(blender_mat.name)
-                if ccs_scene_mat:
-                    #try to get its index
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
-                else:
-                    #add the material to the scene manager
-                    ccs_scene_mat = manager.ccs_materials.add()
-                    ccs_scene_mat.material = blender_mat
-                    ccs_scene_mat_index = manager.ccs_materials.find(blender_mat.name)
+                xfbin_manager = None
+                if _xfbin_available():
+                    xfbin_manager = scene.xfbin_scene
+                    
                 
-                #get the uvOffsetNode useSceneManager
-                uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
-                uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
-                use_scene_manager_node = blender_mat.node_tree.nodes.get("useSceneManager")
-                if uv_offset_node:
-                    uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
-                if uv_scale_node:
-                    uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
-                if use_scene_manager_node:
-                    use_scene_manager_node.inputs[0].default_value = 1.0
 
-                #check if a slot already exists
-                '''try:
-                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
-                except:
-                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
-                
-                #check if a slot already exists
-                try:
-                    slot = blender_mat.animation_data.action.slots[f"MA{blender_mat.name}"]
-                except:
-                    slot = blender_mat.animation_data.action.slots.new(id_type='MATERIAL', name=blender_mat.name)
-                
-                blender_mat.animation_data.action_slot = slot
-
-                channelbag = action.layers[0].strips[0].channelbag(slot)
-                if channelbag:
-                    fcurves = channelbag.fcurves
-                else:
-                    fcurves = action.layers[0].strips[0].channelbags.new(slot).fcurves'''
-                
-                
                 offsetX_value = blender_mat["uvOffset"][0]
                 offsetY_value = blender_mat["uvOffset"][1]
                 scaleX_value = blender_mat["uvOffset"][2]
                 scaleY_value = blender_mat["uvOffset"][3]
 
-                
-                data_path = f'{"ccs_material.uvOffset"}'
                 offsetsX = {}
                 offsetsY = {}
                 scalesX = {}
@@ -2005,29 +2030,71 @@ class importCCS:
                 for frame, values in anim.materials[mat].items():
                     offsetsX[frame] = [values[0] - offsetX_value]
                     offsetsY[frame] = [1 - (values[1] - offsetY_value)]
-                    
+
                     if values[2] == 1:
                         scalesX[frame] = [1]
                     else:
                         scalesX[frame] = [1 + values[2] - scaleX_value]
-                        
+
                     if values[3] == 1:
                         scalesY[frame] = [1]
                     else:
                         scalesY[frame] = [1 + values[3] - scaleY_value]
-                        
-                '''self.insertMaterialFrames(fcurves, group_name, data_path, offsetsX, 0)
-                self.insertMaterialFrames(fcurves, group_name, data_path, offsetsY, 1)
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesX, 2)
-                self.insertMaterialFrames(fcurves, group_name, data_path, scalesY, 3)'''
-                
-                # insert the frames in the scene manager material
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, offsetsY, 1)
-                data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesX, 0)
-                self.insertMaterialFrames(bpy.context.scene.animation_data.action.fcurves, group_name, data_path, scalesY, 1)
+
+                slot_names = self.getSlotNamesForMaterial(action, blender_mat)
+                for slot_name_display in slot_names:
+                    group_name = f"{slot_name_display}::{blender_mat.name}"
+
+                    ccs_scene_mat = None
+                    ccs_scene_mat_index = -1
+                    for i, itm in enumerate(manager.ccs_materials):
+                        if itm.material == blender_mat and getattr(itm, "slot_name", "") == slot_name_display:
+                            ccs_scene_mat = itm
+                            ccs_scene_mat_index = i
+                            break
+
+                    # если не найден — добавляем новую запись
+                    if ccs_scene_mat_index == -1:
+                        ccs_scene_mat = manager.ccs_materials.add()
+                        ccs_scene_mat.material = blender_mat
+                        ccs_scene_mat.slot_name = slot_name_display
+                        ccs_scene_mat_index = len(manager.ccs_materials) - 1
+                    if xfbin_scene_channelbag is not None:
+                        xfbin_scene_mat = None
+                        xfbin_scene_mat_index = -1
+                        for i, itm in enumerate(xfbin_manager.xfbin_materials):
+                            if itm.material == blender_mat and getattr(itm, "name", "") == slot_name_display:
+                                xfbin_scene_mat = itm
+                                xfbin_scene_mat_index = i
+                                break
+
+                        # если не найден — добавляем новую запись
+                        if xfbin_scene_mat_index == -1:
+                            xfbin_scene_mat = xfbin_manager.xfbin_materials.add()
+                            xfbin_scene_mat.material = blender_mat
+                            xfbin_scene_mat.name = slot_name_display
+                            xfbin_scene_mat_index = len(xfbin_manager.xfbin_materials) - 1
+
+                    # получить узлы и присвоить attribute_name с найденным индексом
+                    uv_offset_node = blender_mat.node_tree.nodes.get("uvOffsetNode")
+                    uv_scale_node = blender_mat.node_tree.nodes.get("uvScaleNode")
+                    if uv_offset_node:
+                        uv_offset_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0"
+                    if uv_scale_node:
+                        uv_scale_node.attribute_name = f"ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0"
+                    data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvOffset0'
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, offsetsX, 0)
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, offsetsY, 1)
+                    data_path = f'ccs_manager.ccs_materials[{ccs_scene_mat_index}].uvScale0'
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, scalesX, 0)
+                    self.insertMaterialFrames(scene_channelbag, group_name, data_path, scalesY, 1)
+                    if xfbin_scene_channelbag is not None:
+                        data_path = f'xfbin_scene.xfbin_materials[{xfbin_scene_mat_index}].uvOffset0'
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, offsetsX, 0)
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, offsetsY, 1)
+                        data_path = f'xfbin_scene.xfbin_materials[{xfbin_scene_mat_index}].uvScale0'
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, scalesX, 0)
+                        self.insertMaterialFrames(xfbin_scene_channelbag, group_name, data_path, scalesY, 1)
 
 
 
@@ -2160,33 +2227,157 @@ class importCCS:
         
         return scales
 
+    def insertFrames_old(self, fcurves, group_name, data_path, values, values_count, interpolation='LINEAR'):
+        if not values:
+            return
 
-    def insertFrames(self, fcurves, group_name, data_path, values, values_count, interpolation='LINEAR'):
-        if len(values):
-            for i in range(values_count):
+        action = getattr(fcurves, "id_data", None)
+        channelbag = None
+        # попытаться найти channelbag: сначала по совпадающему fcurves, затем по имени слота в group_name
+        if action is not None:
+            slot_name = group_name.split("::", 1)[0] if "::" in group_name else None
+            for layer in getattr(action, "layers", []):
+                for strip in getattr(layer, "strips", []):
+                    for cb in getattr(strip, "channelbags", []):
+                        # совпадение по коллекции fcurves
+                        if getattr(cb, "fcurves", None) is fcurves:
+                            channelbag = cb
+                            break
+                        # совпадение по имени слота (если есть)
+                        if slot_name and getattr(getattr(cb, "slot", None), "name", None) == slot_name:
+                            channelbag = cb
+                            break
+                    if channelbag:
+                        break
+                if channelbag:
+                    break
+
+        # выбрать коллекцию групп и коллекцию fcurves для записи
+        if channelbag is not None:
+            groups_col = channelbag.groups
+            fcurves_collection = channelbag.fcurves
+        else:
+            groups_col = getattr(action, "groups", None) if action is not None else None
+            fcurves_collection = fcurves
+
+        # найти или создать группу
+        group = None
+        if groups_col is not None:
+            group = groups_col.get(group_name)
+            if group is None:
+                group = groups_col.new(group_name)
+
+        # подготовить списки кадров/значений в стабильном порядке
+        frames = list(values.keys())
+        vals = list(values.values())
+
+        # добавить fcurves в нужную коллекцию и присвоить группу
+        for i in range(values_count):
+            if channelbag is not None:
+                fc = channelbag.fcurves.new(data_path=data_path, index=i)
+            else:
                 fc = fcurves.new(data_path=data_path, index=i)
-                fc.keyframe_points.add(len(values.keys()))
-                fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[i]), values.keys(), values.values())) for x in co])
-                for kp in fc.keyframe_points:
+
+            if group is not None:
+                fc.group = group
+
+            fc.keyframe_points.add(len(frames))
+            fc.keyframe_points.foreach_set('co', [x for co in map(lambda f, v: (f, v[i]), frames, vals) for x in co])
+            for kp in fc.keyframe_points:
+                kp.interpolation = interpolation
+            fc.update()
+
+        # установить интерполяцию для всех ключей, кроме последнего, в коллекции, куда писали
+        for fc in fcurves_collection:
+            if len(fc.keyframe_points) > 1:
+                for kp in fc.keyframe_points[:-1]:
                     kp.interpolation = interpolation
+    def insertFrames(self, channelbag, group_name, data_path, values, values_count, interpolation='LINEAR'):
+        if not len(values):
+            return
 
-                fc.update()
-            
-            # set linear interpolation for all keyframes except the last one
-            for fc in fcurves:
-                for kp in fc.keyframe_points:
-                    kp.interpolation = interpolation
+        # Always derive fcurves from the channelbag — they're guaranteed to match
+        fcurves = channelbag.fcurves
 
+        group = channelbag.groups.get(group_name)
+        if group is None:
+            group = channelbag.groups.new(name=group_name)
 
-    def insertMaterialFrames(self, fcurves, group_name, data_path, values, index):
-        if len(values):
-            fc = fcurves.new(data_path=data_path, index=index)
-            fc.keyframe_points.add(len(values.keys()))
-            fc.keyframe_points.foreach_set('co', [x for co in list(map(lambda f, v: (f, v[0]), values.keys(), values.values())) for x in co])
+        for i in range(values_count):
+            fc = fcurves.new(data_path=data_path, index=i)
+            fc.group = group
+
+            fc.keyframe_points.add(len(values))
+            fc.keyframe_points.foreach_set(
+                'co',
+                [x for co in map(lambda f, v: (f, v[i]), values.keys(), values.values()) for x in co]
+            )
+            for kp in fc.keyframe_points:
+                kp.interpolation = interpolation
 
             fc.update()
+
+        # Set interpolation for all keyframes except the last
+        for fc in fcurves:
+            if len(fc.keyframe_points) > 1:
+                for kp in fc.keyframe_points[:-1]:
+                    kp.interpolation = interpolation
+
+    def insertMaterialFrames(self, channelbag, group_name, data_path, values, index):
+        if not len(values):
+            return
+
+        group = channelbag.groups.get(group_name)
+        if group is None:
+            group = channelbag.groups.new(name=group_name)
+
+        fc = channelbag.fcurves.new(data_path=data_path, index=index)
+        fc.group = group
+
+        fc.keyframe_points.add(len(values))
+        fc.keyframe_points.foreach_set(
+            'co',
+            [x for co in map(lambda f, v: (f, v[0]), values.keys(), values.values()) for x in co]
+        )
+        fc.update()
         
-    
+    def getSlotNamesForMaterial(self, action, blender_mat):
+        """Returns a list of slot name_display values for all armatures that own meshes using this material."""
+        slot_names = []
+        for obj in bpy.data.objects:
+            if obj.type != 'MESH':
+                continue
+            if not any(ms.material == blender_mat for ms in obj.material_slots):
+                continue
+            
+            armature = None
+            if obj.parent and obj.parent.type == 'ARMATURE':
+                armature = obj.parent
+            else:
+                for mod in obj.modifiers:
+                    if mod.type == 'ARMATURE' and mod.object:
+                        armature = mod.object
+                        break
+            
+            if armature is None:
+                continue
+            
+            slot_key = f"OB{armature.name}"
+            try:
+                slot = action.slots[slot_key]
+                name = slot.name_display
+                if name not in slot_names:
+                    slot_names.append(name)
+            except (KeyError, TypeError):
+                continue
+        
+        return slot_names if slot_names else [blender_mat.name]  # fallback
+    def getOrCreateChannelbag(self, action, slot):
+        """Always returns a valid channelbag for the given slot."""
+        channelbag = action.layers[0].strips[0].channelbag(slot)
+        if channelbag is None:
+            channelbag = action.layers[0].strips[0].channelbags.new(slot)
+        return channelbag
 def menu_func_import(self, context):
     self.layout.operator(CCS_IMPORTER_OT_IMPORT.bl_idname,
                         text='CyberConnect Streaming File (.ccs)')

@@ -23,7 +23,7 @@ bl_info = {
 }
 
 import bpy
-
+XFBIN_AVAILABLE = False
 from .importer import *
 from .exporter import *
 from bpy.props import (BoolProperty, CollectionProperty, FloatProperty, PointerProperty,
@@ -35,7 +35,8 @@ class CCS_UL_SceneMaterials(bpy.types.UIList):
             row.label(text=item.material.name, icon='MATERIAL')
         else:
             row.label(text=item.name)
-        row.prop(item, 'material',emboss= True, text='', icon='MATERIAL')
+        row.prop(item, "slot_name", text="", emboss=True)
+        row.prop(item, "material", emboss=True, text="", icon='MATERIAL')
 
 
 class CCS_SceneMaterial_OT_Add(bpy.types.Operator):
@@ -69,6 +70,7 @@ class CCSSceneMaterialPropertyGroup(PropertyGroup):
             self.name = self.material.name
         else:
             self.name = 'Material'
+    slot_name: StringProperty(name='Slot Name', default='Slot Name')
     name: StringProperty(name='Name', default='Material')
     
     material: PointerProperty(
@@ -524,6 +526,17 @@ def register():
     bpy.utils.register_class(ccsCreatePointLight)
     bpy.utils.register_class(ccsSceneManagerPanel)
     bpy.types.Scene.ccs_manager = bpy.props.PointerProperty(type=ccsSceneManager)
+    
+    global XFBIN_AVAILABLE
+    try:
+        import importlib
+        mod = importlib.import_module("Blender-XFBIN-Importer.blender.panels.scene_manager_panel")
+        XfbinSceneManagerPropertyGroup = mod.XfbinSceneManagerPropertyGroup
+        bpy.types.Scene.xfbin_scene = bpy.props.PointerProperty(type=XfbinSceneManagerPropertyGroup)
+        XFBIN_AVAILABLE = True
+    except Exception as e:
+        print(f"[CCS Importer] XFBIN addon not found, xfbin features disabled. Make sure you loaded addon in 'Blender-XFBIN-Importer' folder and make sure you installed CCS Addon after XFBIN Addon: {e}")
+        XFBIN_AVAILABLE = False
     bpy.utils.register_class(ccsObjectProperties)
     bpy.utils.register_class(ccsPropertyGroup)
     bpy.types.Scene.ccs_importer = bpy.props.PointerProperty(type=ccsPropertyGroup)
@@ -557,6 +570,10 @@ def unregister():
     
     
     bpy.utils.unregister_class(ccsSceneManager)
+    
+    global XFBIN_AVAILABLE
+    if XFBIN_AVAILABLE:
+        del bpy.types.Scene.xfbin_scene
     bpy.utils.unregister_class(ccsCreateDirLight)
     bpy.utils.unregister_class(ccsCreatePointLight)
     bpy.utils.unregister_class(ccsSceneManagerPanel)
